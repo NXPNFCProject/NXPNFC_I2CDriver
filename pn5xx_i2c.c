@@ -35,7 +35,7 @@
 #include <linux/gpio.h>
 #include <linux/miscdevice.h>
 #include <linux/spinlock.h>
-#include "pn71xx.h"
+#include "pn5xx_i2c.h"
 #include <linux/of_gpio.h>
 #include <linux/regulator/consumer.h>
 #include <linux/of.h>
