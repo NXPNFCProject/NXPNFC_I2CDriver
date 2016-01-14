@@ -343,12 +343,17 @@ static ssize_t pn5xx_dev_read(struct file *filp, char __user *buf,
         }
 
         while (1) {
+            ret = 0;
             pn5xx_dev->irq_enabled = true;
             enable_irq(pn5xx_dev->client->irq);
+            /*If IRQ line is already high, which means IRQ was high
+            just before enabling the interrupt, skip waiting for interrupt,
+            as interrupt would have been disabled by then in the interrupt handler*/
+            if (!gpio_get_value(pn544_dev->irq_gpio)){
             ret = wait_event_interruptible(
                     pn5xx_dev->read_wq,
                     !pn5xx_dev->irq_enabled);
-
+            }
             pn5xx_disable_irq(pn5xx_dev);
 
             if (ret)
