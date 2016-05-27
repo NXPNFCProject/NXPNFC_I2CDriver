@@ -84,6 +84,10 @@ struct pn5xx_dev    {
     long                nfc_service_pid; /*used to signal the nfc the nfc service */
 };
 
+static struct pn5xx_dev *pn5xx_dev;
+static struct semaphore ese_access_sema;
+static void release_ese_lock(p61_access_state_t  p61_current_state);
+int get_ese_lock(p61_access_state_t  p61_current_state, int timeout);
 static void p61_get_access_state(struct pn5xx_dev*, p61_access_state_t*);
 
 /**********************************************************
@@ -177,9 +181,9 @@ static void signal_handler(p61_access_state_t state, long nfc_pid)
     if(task)
     {
         pr_info("%s.\n", task->comm);
-        sigret = send_sig_info(SIG_NFC, &sinfo, task);
+        sigret = force_sig_info(SIG_NFC, &sinfo, task);
         if(sigret < 0){
-            pr_info("send_sig_info failed..... sigret %d.\n", sigret);
+            pr_info("force_sig_info failed..... sigret %d.\n", sigret);
             //msleep(60);
         }
     }
@@ -349,7 +353,7 @@ static ssize_t pn5xx_dev_read(struct file *filp, char __user *buf,
             /*If IRQ line is already high, which means IRQ was high
             just before enabling the interrupt, skip waiting for interrupt,
             as interrupt would have been disabled by then in the interrupt handler*/
-            if (!gpio_get_value(pn544_dev->irq_gpio)){
+            if (!gpio_get_value(pn5xx_dev->irq_gpio)){
             ret = wait_event_interruptible(
                     pn5xx_dev->read_wq,
                     !pn5xx_dev->irq_enabled);
@@ -455,12 +459,17 @@ static int pn5xx_dev_release(struct inode *inode, struct file *filp)
     return 0;
 }
 
-static long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
+long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
                 unsigned long arg)
 {
     struct pn5xx_dev *pn5xx_dev = filp->private_data;
 
     pr_info("%s, cmd=%d, arg=%lu\n", __func__, cmd, arg);
+
+    if (cmd == PN5XX_GET_ESE_ACCESS)
+    {
+        return get_ese_lock(P61_STATE_WIRED, arg);
+    }
     p61_access_lock(pn5xx_dev);
     switch (cmd) {
     case PN5XX_SET_PWR:
@@ -501,6 +510,17 @@ static long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
             pr_info("%s : PN61_SET_SPI_PWR - power on ese\n", __func__);
             if ((current_state & (P61_STATE_SPI|P61_STATE_SPI_PRIO)) == 0) {
                 p61_update_access_state(pn5xx_dev, P61_STATE_SPI, true);
+                /*To handle triple mode protection signal
+                NFC service when SPI session started*/
+                if (current_state & P61_STATE_WIRED){
+                    if(pn5xx_dev->nfc_service_pid){
+                        pr_info("nfc service pid %s   ---- %ld", __func__, pn5xx_dev->nfc_service_pid);
+                        signal_handler(P61_STATE_SPI, pn5xx_dev->nfc_service_pid);
+                    }
+                    else{
+                        pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn5xx_dev->nfc_service_pid);
+                    }
+                }
                 pn5xx_dev->spi_ven_enabled = true;
                 if (pn5xx_dev->nfc_ven_enabled == false) {
                     /* provide power to NFCC if, NFC service not provided */
@@ -537,8 +557,20 @@ static long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
                  }
               }else if(current_state & P61_STATE_SPI){
                   p61_update_access_state(pn5xx_dev, P61_STATE_SPI, false);
-                  if (!(current_state & P61_STATE_WIRED))
+                  if (!(current_state & P61_STATE_WIRED)){
                       gpio_set_value(pn5xx_dev->ese_pwr_gpio, 0);
+                  }
+                /*To handle triple mode protection signal
+                NFC service when SPI session started*/
+                 if (current_state & P61_STATE_WIRED){
+                    if(pn5xx_dev->nfc_service_pid){
+                        pr_info("nfc service pid %s   ---- %ld", __func__, pn5xx_dev->nfc_service_pid);
+                        signal_handler(P61_STATE_SPI, pn5xx_dev->nfc_service_pid);
+                    }
+                    else{
+                        pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn5xx_dev->nfc_service_pid);
+                    }
+                  }
                   pn5xx_dev->spi_ven_enabled = false;
                   if (pn5xx_dev->nfc_ven_enabled == false) {
                       gpio_set_value(pn5xx_dev->ven_gpio, 0);
@@ -621,7 +653,10 @@ static long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
                 p61_access_unlock(pn5xx_dev);
                 return -EBADRQC; /* Device or resource busy */
             }
-        }else {
+        } else if(arg == 5){
+            release_ese_lock(P61_STATE_SPI);
+        }
+        else {
             pr_info("%s bad ese pwr arg %lu\n", __func__, arg);
             p61_access_unlock(pn5xx_dev);
             return -EBADRQC; /* Invalid request code */
@@ -676,6 +711,20 @@ static long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
                 return -EPERM; /* Operation not permitted */
             }
         }
+        else if(arg == 2)
+        {
+             pr_info("%s : P61_ESE_GPIO_LOW  \n", __func__);
+             gpio_set_value(pn5xx_dev->ese_pwr_gpio, 0);
+        }
+        else if(arg == 3)
+        {
+            pr_info("%s : P61_ESE_GPIO_HIGH  \n", __func__);
+            gpio_set_value(pn5xx_dev->ese_pwr_gpio, 1);
+        }
+        else if(arg == 4)
+        {
+            release_ese_lock(P61_STATE_WIRED);
+        }
         else {
             pr_info("%s P61_SET_WIRED_ACCESS - bad arg %lu\n", __func__, arg);
             p61_access_unlock(pn5xx_dev);
@@ -697,6 +746,25 @@ static long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
     }
     p61_access_unlock(pn5xx_dev);
     return 0;
+}
+
+EXPORT_SYMBOL(pn5xx_dev_ioctl);
+int get_ese_lock(p61_access_state_t  p61_current_state, int timeout)
+{
+    unsigned long tempJ = msecs_to_jiffies(timeout);
+    if(down_timeout(&ese_access_sema, tempJ) != 0)
+    {
+        printk("get_ese_lock: timeout p61_current_state = %d\n", p61_current_state);
+        return -EBUSY;
+    }
+    return 0;
+}
+
+EXPORT_SYMBOL(get_ese_lock);
+
+static void release_ese_lock(p61_access_state_t  p61_current_state)
+{
+    up(&ese_access_sema);
 }
 
 static const struct file_operations pn5xx_dev_fops = {
@@ -733,7 +801,7 @@ static int pn5xx_get_pdata(struct device *dev,
     /* read the dev tree data */
     
     /* ven pin - enable's power to the chip - REQUIRED */
-    val = of_get_named_gpio_flags(node, "nxp,pn544-ven", 0, &flags);
+    val = of_get_named_gpio_flags(node, "nxp,pn5xx-ven", 0, &flags);
     if (val >= 0) {
         pdata->ven_gpio = val;
     }
@@ -743,7 +811,7 @@ static int pn5xx_get_pdata(struct device *dev,
     }
     
     /* firm pin - controls firmware download - OPTIONAL */
-    val = of_get_named_gpio_flags(node, "nxp,pn544-fw-dwnld", 0, &flags);
+    val = of_get_named_gpio_flags(node, "nxp,pn5xx-fw-dwnld", 0, &flags);
     if (val >= 0) {
         pdata->firm_gpio = val;
     }
@@ -753,7 +821,7 @@ static int pn5xx_get_pdata(struct device *dev,
     }
     
     /* irq pin - data available irq - REQUIRED */
-    val = of_get_named_gpio_flags(node, "nxp,pn544-irq", 0, &flags);
+    val = of_get_named_gpio_flags(node, "nxp,pn5xx-irq", 0, &flags);
     if (val >= 0) {
         pdata->irq_gpio = val;
     }
@@ -763,7 +831,7 @@ static int pn5xx_get_pdata(struct device *dev,
     }
     
     /* ese-pwr pin - enable's power to the ese- REQUIRED */
-    val = of_get_named_gpio_flags(node, "nxp,pn544-ese-pwr", 0, &flags);
+    val = of_get_named_gpio_flags(node, "nxp,pn5xx-ese-pwr", 0, &flags);
     if (val >= 0) {
         pdata->ese_pwr_gpio = val;
     }
@@ -843,7 +911,7 @@ static int pn5xx_probe(struct i2c_client *client,
     int ret;
     struct pn5xx_i2c_platform_data *pdata;  // gpio values, from board file or DT
     struct pn5xx_i2c_platform_data tmp_pdata;
-    struct pn5xx_dev *pn5xx_dev;            // internal device specific data
+//    struct pn5xx_dev *pn5xx_dev;            // internal device specific data
 
     pr_info("%s\n", __func__);
 
@@ -989,6 +1057,7 @@ static int pn5xx_probe(struct i2c_client *client,
     /* init mutex and queues */
     init_waitqueue_head(&pn5xx_dev->read_wq);
     mutex_init(&pn5xx_dev->read_mutex);
+    sema_init(&ese_access_sema, 1);
     mutex_init(&pn5xx_dev->p61_state_mutex);
     spin_lock_init(&pn5xx_dev->irq_enabled_lock);
 

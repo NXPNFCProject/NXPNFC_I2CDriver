@@ -59,8 +59,14 @@
   NFC Init will call the ioctl to register the PID with the i2c driver
 */
 #define PN5XX_SET_NFC_SERVICE_PID _IOW(PN5XX_MAGIC, 0x05, long)
+/*
+  NFC and SPI will call the ioctl to get the i2c/spi bus access
+*/
+#define PN5XX_GET_ESE_ACCESS _IOW(PN5XX_MAGIC, 0x06, long)
 
-#define PN5XX_CLK_REQ   _IOW(PN5XX_MAGIC, 0x06, unsigned int)
+#define PN5XX_CLK_REQ   _IOW(PN5XX_MAGIC, 0x07, unsigned int)
+
+
 
 typedef enum p61_access_state{
     P61_STATE_INVALID = 0x0000,
@@ -70,6 +76,7 @@ typedef enum p61_access_state{
     P61_STATE_DWNLD = 0x0800, /* NFCC fw download is in progress */
     P61_STATE_SPI_PRIO = 0x1000, /*Start of p61 access by SPI on priority*/
     P61_STATE_SPI_PRIO_END = 0x2000, /*End of p61 access by SPI on priority*/
+    P61_STATE_SPI_END = 0x4000,
 }p61_access_state_t;
 
 
