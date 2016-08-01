@@ -185,6 +185,7 @@ static void signal_handler(p61_access_state_t state, long nfc_pid)
         if(sigret < 0){
             pr_info("force_sig_info failed..... sigret %d.\n", sigret);
             //msleep(60);
+            ret = -1;
         }
     }
     else{
@@ -482,6 +483,22 @@ long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
         } else  if (arg == 0) {
             /* power off */
             pn5xx_disable(pn5xx_dev);
+        } else if (arg == 3) {
+            /*NFC Service called ISO-RST*/
+            p61_access_state_t current_state = P61_STATE_INVALID;
+            p61_get_access_state(pn5xx_dev, &current_state);
+            if(current_state & (P61_STATE_SPI|P61_STATE_SPI_PRIO)) {
+                p61_access_unlock(pn5xx_dev);
+                return -EPERM; /* Operation not permitted */
+            }
+            if(current_state & P61_STATE_WIRED) {
+                p61_update_access_state(pn5xx_dev, P61_STATE_WIRED, false);
+            }
+            gpio_set_value(pn5xx_dev->iso_rst_gpio, 0);
+            msleep(50);
+            gpio_set_value(pn5xx_dev->iso_rst_gpio, 1);
+            msleep(50);
+            pr_info("%s ISO RESET from DWP DONE\n", __func__);
         } else {
             pr_err("%s bad SET_PWR arg %lu\n", __func__, arg);
             return -EINVAL;
@@ -548,6 +565,12 @@ long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
                     pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn5xx_dev->nfc_service_pid);
                 }
                 }
+
+                pn5xx_dev->spi_ven_enabled = false;
+
+                if(pn5xx_dev->chip_pwr_scheme == PN80T_EXT_PMU_SCHEME)
+                    break;
+
                 if (!(current_state & P61_STATE_WIRED))
                     gpio_set_value(pn5xx_dev->ese_pwr_gpio, 0);
                 pn5xx_dev->spi_ven_enabled = false;
@@ -655,6 +678,24 @@ long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
             }
         } else if(arg == 5){
             release_ese_lock(P61_STATE_SPI);
+        } else if (arg == 6) {
+            /*SPI Service called ISO-RST*/
+            p61_access_state_t current_state = P61_STATE_INVALID;
+            p61_get_access_state(pn5xx_dev, &current_state);
+            if(current_state & P61_STATE_WIRED) {
+                p61_access_unlock(pn5xx_dev);
+                return -EPERM; /* Operation not permitted */
+            }
+            if(current_state & P61_STATE_SPI) {
+                p61_update_access_state(pn5xx_dev, P61_STATE_SPI, false);
+            }else if(current_state & P61_STATE_SPI_PRIO) {
+                p61_update_access_state(pn5xx_dev, P61_STATE_SPI_PRIO, false);
+            }
+            gpio_set_value(pn5xx_dev->iso_rst_gpio, 0);
+            msleep(50);
+            gpio_set_value(pn5xx_dev->iso_rst_gpio, 1);
+            msleep(50);
+            pr_info("%s ISO RESET from SPI DONE\n", __func__);
         }
         else {
             pr_info("%s bad ese pwr arg %lu\n", __func__, arg);
@@ -737,6 +778,29 @@ long  pn5xx_dev_ioctl(struct file *filp, unsigned int cmd,
         pr_info("%s : The NFC Service PID is %ld\n", __func__, arg);
         pn5xx_dev->nfc_service_pid = arg;
 
+    }
+    break;
+    case P5XX_SET_POWER_SCHEME:
+    {
+        if(arg == PN67T_PWR_SCHEME)
+        {
+            pn5xx_dev->chip_pwr_scheme = PN67T_PWR_SCHEME;
+            pr_info("%s : The power scheme is set to PN67T legacy \n", __func__);
+        }
+        else if(arg == PN80T_LEGACY_PWR_SCHEME)
+        {
+            pn5xx_dev->chip_pwr_scheme = PN80T_LEGACY_PWR_SCHEME;
+            pr_info("%s : The power scheme is set to PN80T_LEGACY_PWR_SCHEME,\n", __func__);
+        }
+        else if(arg == PN80T_EXT_PMU_SCHEME)
+        {
+            pn5xx_dev->chip_pwr_scheme = PN80T_EXT_PMU_SCHEME;
+            pr_info("%s : The power scheme is set to PN80T_EXT_PMU_SCHEME,\n", __func__);
+        }
+        else
+        {
+            pr_info("%s : The power scheme is invalid,\n", __func__);
+        }
     }
     break;
     default:

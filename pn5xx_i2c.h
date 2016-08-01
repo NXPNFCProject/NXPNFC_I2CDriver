@@ -64,9 +64,11 @@
 */
 #define PN5XX_GET_ESE_ACCESS _IOW(PN5XX_MAGIC, 0x06, long)
 
-#define PN5XX_CLK_REQ   _IOW(PN5XX_MAGIC, 0x07, unsigned int)
-
-
+/*
+  NFC and SPI will call the ioctl to update the power scheme
+*/
+#define PN5XX_SET_POWER_SCHEME _IOW(PN5XX_MAGIC, 0x07, long)
+#define PN5XX_CLK_REQ   _IOW(PN5XX_MAGIC, 0x09, unsigned int)
 
 typedef enum p61_access_state{
     P61_STATE_INVALID = 0x0000,
@@ -79,6 +81,11 @@ typedef enum p61_access_state{
     P61_STATE_SPI_END = 0x4000,
 }p61_access_state_t;
 
+typedef enum chip_type_pwr_scheme{
+    PN67T_PWR_SCHEME = 0x01,
+    PN80T_LEGACY_PWR_SCHEME,
+    PN80T_EXT_PMU_SCHEME,
+}chip_pwr_scheme_t;
 
 struct pn5xx_i2c_platform_data {
     unsigned int irq_gpio;
@@ -90,4 +97,5 @@ struct pn5xx_i2c_platform_data {
     struct regulator *vbat_reg;
     struct regulator *pmuvcc_reg;
     struct regulator *sevdd_reg;
+    unsigned int iso_rst_gpio; /* gpio used for ISO hard reset P73*/
 };
