@@ -60,6 +60,7 @@
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/signal.h>
+#include <linux/wakelock.h>
 #include "pn54x.h"
 
 #define NEXUS5x    0
@@ -84,6 +85,8 @@ struct pn544_dev    {
     spinlock_t          irq_enabled_lock;
     long                nfc_service_pid; /*used to signal the nfc the nfc service */
 };
+struct wake_lock nfc_wake_lock;
+static bool  sIsWakeLocked = false;
 static struct pn544_dev *pn544_dev;
 static struct semaphore ese_access_sema;
 static struct semaphore svdd_sync_onoff_sema;
@@ -96,6 +99,7 @@ static void pn544_disable_irq(struct pn544_dev *pn544_dev)
     spin_lock_irqsave(&pn544_dev->irq_enabled_lock, flags);
     if (pn544_dev->irq_enabled) {
         disable_irq_nosync(pn544_dev->client->irq);
+        disable_irq_wake(pn544_dev->client->irq);
         pn544_dev->irq_enabled = false;
     }
     spin_unlock_irqrestore(&pn544_dev->irq_enabled_lock, flags);
@@ -106,7 +110,13 @@ static irqreturn_t pn544_dev_irq_handler(int irq, void *dev_id)
     struct pn544_dev *pn544_dev = dev_id;
 
     pn544_disable_irq(pn544_dev);
-
+    if (sIsWakeLocked == false)
+    {
+        wake_lock(&nfc_wake_lock);
+        sIsWakeLocked = true;
+    } else {
+            pr_debug("%s already wake locked!\n", __func__);
+    }
     /* Wake up waiting readers */
     wake_up(&pn544_dev->read_wq);
 
@@ -136,6 +146,7 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
         while (1) {
             pn544_dev->irq_enabled = true;
             enable_irq(pn544_dev->client->irq);
+            enable_irq_wake(pn544_dev->client->irq);
             ret = wait_event_interruptible(
                     pn544_dev->read_wq,
                     !pn544_dev->irq_enabled);
@@ -154,7 +165,10 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 
     /* Read data */
     ret = i2c_master_recv(pn544_dev->client, tmp, count);
-
+    if (sIsWakeLocked == true) {
+        wake_unlock(&nfc_wake_lock);
+        sIsWakeLocked = false;
+    }
     mutex_unlock(&pn544_dev->read_mutex);
 
     /* pn544 seems to be slow in handling I2C read requests
@@ -405,6 +419,10 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             /* Don't change Ven state if spi made it high */
             if (pn544_dev->spi_ven_enabled == false) {
                 gpio_set_value(pn544_dev->ven_gpio, 0);
+            }
+            if (sIsWakeLocked == true) {
+                wake_unlock(&nfc_wake_lock);
+                sIsWakeLocked = false;
             }
         } else {
             pr_err("%s bad arg %lu\n", __func__, arg);
@@ -898,6 +916,7 @@ static int pn544_probe(struct i2c_client *client,
         pr_err("%s : misc_register failed\n", __FILE__);
         goto err_misc_register;
     }
+    wake_lock_init(&nfc_wake_lock, WAKE_LOCK_SUSPEND, "NFCWAKE");
 
     /* request irq.  the irq is set whenever the chip has data available
      * for reading.  it is cleared when all data has been read.
@@ -910,6 +929,8 @@ static int pn544_probe(struct i2c_client *client,
         dev_err(&client->dev, "request_irq failed\n");
         goto err_request_irq_failed;
     }
+    pr_info("%s : Enabling IRQ Wake\n", __func__);
+    enable_irq_wake(pn544_dev->client->irq);
     pn544_disable_irq(pn544_dev);
     i2c_set_clientdata(client, pn544_dev);
 
