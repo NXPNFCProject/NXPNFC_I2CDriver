@@ -117,7 +117,7 @@ typedef enum chip_type_pwr_scheme{
 }chip_pwr_scheme_t;
 
 typedef enum jcop_dwnld_state{
-    JCP_DWNLD_IDLE,                         /* jcop dwnld is not ongoing*/
+    JCP_DWNLD_IDLE = P61_STATE_JCP_DWNLD,   /* jcop dwnld is ongoing*/
     JCP_DWNLD_INIT,                         /* jcop dwonload init state*/
     JCP_DWNLD_START,                        /* download started */
     JCP_SPI_DWNLD_COMPLETE,                 /* jcop download complete in spi interface*/
