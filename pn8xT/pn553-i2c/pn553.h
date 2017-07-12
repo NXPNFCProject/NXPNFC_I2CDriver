@@ -36,7 +36,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  ******************************************************************************/
-
+#ifndef _PN553_H_
+#define _PN553_H_
 #define PN544_MAGIC 0xE9
 
 /*
@@ -104,6 +105,7 @@ typedef enum p61_access_state{
     P61_STATE_SPI_PRIO_END = 0x2000, /*End of p61 access by SPI on priority*/
     P61_STATE_SPI_END = 0x4000,
     P61_STATE_JCP_DWNLD = 0x8000,/* JCOP downlad in progress */
+    P61_STATE_SECURE_MODE = 0x100000, /* secure mode state*/
     P61_STATE_SPI_SVDD_SYNC_START = 0x0001, /*ESE_VDD Low req by SPI*/
     P61_STATE_SPI_SVDD_SYNC_END = 0x0002, /*ESE_VDD is Low by SPI*/
     P61_STATE_DWP_SVDD_SYNC_START = 0x0004, /*ESE_VDD  Low req by Nfc*/
@@ -131,3 +133,4 @@ struct pn544_i2c_platform_data {
     unsigned int ese_pwr_gpio; /* gpio to give power to p61, only TEE should use this */
     unsigned int iso_rst_gpio; /* gpio used for ISO hard reset P73*/
 };
+#endif
