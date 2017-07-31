@@ -164,7 +164,7 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
     if (count > MAX_BUFFER_SIZE)
         count = MAX_BUFFER_SIZE;
 
-    pr_debug("%s : reading   %zu bytes.\n", __func__, count);
+    //pr_debug("%s : reading   %zu bytes.\n", __func__, count);
 
     mutex_lock(&pn544_dev->read_mutex);
 
@@ -248,7 +248,7 @@ static ssize_t pn544_dev_write(struct file *filp, const char __user *buf,
         return -EFAULT;
     }
 
-    pr_debug("%s : writing %zu bytes.\n", __func__, count);
+    //pr_debug("%s : writing %zu bytes.\n", __func__, count);
     /* Write data */
     ret = i2c_master_send(pn544_dev->client, tmp, count);
     if (ret != count) {
