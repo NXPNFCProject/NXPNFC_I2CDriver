@@ -532,6 +532,10 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 }
                 /* pull the gpio to high once NFCC is power on*/
                 gpio_set_value(pn544_dev->ese_pwr_gpio, 1);
+
+                /* Delay (10ms) after SVDD_PWR_ON to allow JCOP to bootup (5ms jcop boot time + 5ms guard time) */
+                usleep_range(10000, 12000);
+
             } else {
                 pr_info("%s : PN61_SET_SPI_PWR -  power on ese failed \n", __func__);
                 p61_access_unlock(pn544_dev);
@@ -564,10 +568,17 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 if(pn544_dev->chip_pwr_scheme == PN80T_EXT_PMU_SCHEME)
                     break;
 
+                /* if secure timer is running, Delay the SPI close by 25ms after sending End of Apdu to enable eSE go into DPD
+                    gracefully (20ms after EOS + 5ms DPD settlement time) */
+                if(pn544_dev->secure_timer_cnt)
+                    usleep_range(25000, 30000);
+
                 if (!(current_state & P61_STATE_WIRED) && !(pn544_dev->secure_timer_cnt))
                 {
 #ifndef JCOP_4X_VALIDATION
                     gpio_set_value(pn544_dev->ese_pwr_gpio, 0);
+                    /* Delay (2.5ms) after SVDD_PWR_OFF for the shutdown settlement time */
+                    usleep_range(2500, 3000);
 #endif
                     svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_END);
                 }
@@ -590,9 +601,16 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                        else{
                            pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
                        }
+                       /* if secure timer is running, Delay the SPI close by 25ms after sending End of Apdu to enable eSE go into DPD
+                            gracefully (20ms after EOS + 5ms DPD settlement time) */
+                       if(pn544_dev->secure_timer_cnt)
+                            usleep_range(25000, 30000);
+
                       if (!(pn544_dev->secure_timer_cnt)) {
 #ifndef JCOP_4X_VALIDATION
                           gpio_set_value(pn544_dev->ese_pwr_gpio, 0);
+                          /* Delay (2.5ms) after SVDD_PWR_OFF for the shutdown settlement time */
+                          usleep_range(2500, 3000);
 #endif
                           svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_END);
                        }
@@ -691,6 +709,9 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                     }
                     /* pull the gpio to high once NFCC is power on*/
                     gpio_set_value(pn544_dev->ese_pwr_gpio, 1);
+
+                    /* Delay (10ms) after SVDD_PWR_ON to allow JCOP to bootup (5ms jcop boot time + 5ms guard time) */
+                    usleep_range(10000, 12000);
                 }
             }else {
                 pr_info("%s : Prio Session Start power on ese failed \n", __func__);
@@ -894,7 +915,8 @@ static void secure_timer_callback( unsigned long data )
 {
   p61_access_state_t current_state = P61_STATE_INVALID;
   printk( KERN_INFO "secure_timer_callback: called (%lu).\n", jiffies);
-
+  /* Locking the critical section: ESE_PWR_OFF to allow eSE to shutdown peacefully :: START */
+  get_ese_lock(P61_STATE_WIRED, MAX_ESE_ACCESS_TIME_OUT_MS);
   p61_update_access_state(pn544_dev, P61_STATE_SECURE_MODE, false);
   p61_get_access_state(pn544_dev, &current_state);
 
@@ -902,6 +924,8 @@ static void secure_timer_callback( unsigned long data )
   {
       printk( KERN_INFO "secure_timer_callback: make se_pwer_gpio low, state = %d", current_state);
       gpio_set_value(pn544_dev->ese_pwr_gpio, 0);
+      /* Delay (2.5ms) after SVDD_PWR_OFF for the shutdown settlement time */
+      usleep_range(2500, 3000);
       if(pn544_dev->nfc_service_pid == 0x00)
       {
           gpio_set_value(pn544_dev->ven_gpio, 0);
@@ -909,6 +933,8 @@ static void secure_timer_callback( unsigned long data )
       }
   }
   pn544_dev->secure_timer_cnt = 0;
+  /* Locking the critical section: ESE_PWR_OFF to allow eSE to shutdown peacefully :: END */
+  release_ese_lock(P61_STATE_WIRED);
 }
 
 static long start_seccure_timer(unsigned long timer_value)

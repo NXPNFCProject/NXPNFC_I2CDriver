@@ -94,6 +94,7 @@
 #define PN544_SET_DWNLD_STATUS    _IOW(PN544_MAGIC, 0x09, long)
 
 #define P544_SECURE_TIMER_SESSION _IOW(PN544_MAGIC, 0x0A, long)
+#define MAX_ESE_ACCESS_TIME_OUT_MS 200 /*100 milliseconds*/
 
 typedef enum p61_access_state{
     P61_STATE_INVALID = 0x0000,
