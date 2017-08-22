@@ -134,4 +134,22 @@ struct pn544_i2c_platform_data {
     unsigned int ese_pwr_gpio; /* gpio to give power to p61, only TEE should use this */
     unsigned int iso_rst_gpio; /* gpio used for ISO hard reset P73*/
 };
+
+struct hw_type_info {
+    /*
+     * Response of get_version_cmd will be stored in data
+     * byte structure :
+     * byte 0-1     : Header
+     * byte 2       : Status
+     * byte 3       : Hardware Version
+     * byte 4       : ROM code
+     * byte 5       : 0x00 constant
+     * byte 6-7     : Protected data version
+     * byte 8-9     : Trim data version
+     * byte 10-11   : FW version
+     * byte 12-13   : CRC
+     * */
+    char data[20];
+    int len;
+};
 #endif

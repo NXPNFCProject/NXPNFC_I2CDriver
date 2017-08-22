@@ -70,6 +70,7 @@
 #include "pn553.h"
 
 #define NEXUS5x    0
+#define HWINFO     0
 #if NEXUS5x
 #undef ISO_RST
 #else
@@ -107,6 +108,9 @@ struct pn544_dev    {
 /* HiKey Compilation fix */
 #ifndef HiKey_620_COMPILATION_FIX
 struct wake_lock nfc_wake_lock;
+#if HWINFO
+struct hw_type_info hw_info;
+#endif
 static bool  sIsWakeLocked = false;
 #endif
 static struct pn544_dev *pn544_dev;
@@ -118,7 +122,9 @@ int get_ese_lock(p61_access_state_t  p61_current_state, int timeout);
 static long set_jcop_download_state(unsigned long arg);
 static long start_seccure_timer(unsigned long timer_value);
 static long secure_timer_operation(struct pn544_dev *pn544_dev, unsigned long arg);
-
+#if HWINFO
+static void check_hw_info(void);
+#endif
 static void pn544_disable_irq(struct pn544_dev *pn544_dev)
 {
     unsigned long flags;
@@ -1273,7 +1279,12 @@ static int pn544_probe(struct i2c_client *client,
     enable_irq_wake(pn544_dev->client->irq);
     pn544_disable_irq(pn544_dev);
     i2c_set_clientdata(client, pn544_dev);
-
+#if HWINFO
+    /*
+     * This function is used only if
+     * hardware info is required during probe*/
+    check_hw_info();
+#endif
 
     return 0;
 
@@ -1361,7 +1372,120 @@ static struct i2c_driver pn544_driver = {
 #endif
         },
 };
+#if HWINFO
+/******************************************************************************
+ * Function         check_hw_info
+ *
+ * Description      This function is called during pn544_probe to retrieve
+ *                  HW info.
+ *                  Useful get HW information in case of previous FW download is
+ *                  interrupted and core reset is not allowed.
+ *                  This function checks if core reset  is allowed, if not
+ *                  sets DWNLD_REQ(firm_gpio) , ven reset and sends firmware
+ *                  get version command.
+ *                  In response HW information will be received.
+ *
+ * Returns          None
+ *
+ ******************************************************************************/
+static void check_hw_info() {
+    char read_data[20];
+    int ret, get_version_len = 8, retry_count = 0;
+    static uint8_t cmd_reset_nci[] = {0x20, 0x00, 0x01, 0x00};
+    char get_version_cmd[] =
+    {0x00, 0x04, 0xF1, 0x00, 0x00, 0x00, 0x6E, 0xEF};
 
+    pr_info("%s :Enter\n", __func__);
+
+    /*
+     * Ven Reset  before sending core Reset
+     * This is to check core reset is allowed or not.
+     * If not allowed then previous FW download is interrupted in between
+     * */
+    pr_info("%s :Ven Reset \n", __func__);
+    gpio_set_value(pn544_dev->ven_gpio, 1);
+    msleep(10);
+    gpio_set_value(pn544_dev->ven_gpio, 0);
+    msleep(10);
+    gpio_set_value(pn544_dev->ven_gpio, 1);
+    msleep(10);
+    ret = i2c_master_send(pn544_dev->client, cmd_reset_nci, 4);
+
+    if (ret == 4) {
+        pr_info("%s : core reset write success\n", __func__);
+    } else {
+
+        /*
+         * Core reset  failed.
+         * set the DWNLD_REQ , do ven reset
+         * send firmware download info command
+         * */
+        pr_err("%s : write failed\n", __func__);
+        pr_info("%s power on with firmware\n", __func__);
+        gpio_set_value(pn544_dev->ven_gpio, 1);
+        msleep(10);
+        if (pn544_dev->firm_gpio) {
+            p61_update_access_state(pn544_dev, P61_STATE_DWNLD, true);
+            gpio_set_value(pn544_dev->firm_gpio, 1);
+        }
+        msleep(10);
+        gpio_set_value(pn544_dev->ven_gpio, 0);
+        msleep(10);
+        gpio_set_value(pn544_dev->ven_gpio, 1);
+        msleep(10);
+        ret = i2c_master_send(pn544_dev->client, get_version_cmd, get_version_len);
+        if (ret != get_version_len) {
+            ret = -EIO;
+            pr_err("%s : write_failed \n", __func__);
+        }
+        else {
+            pr_info("%s :data sent\n", __func__);
+        }
+
+        ret = 0;
+
+        while (retry_count < 10) {
+
+            /*
+             * Wait for read interrupt
+             * If spurious interrupt is received retry again
+             * */
+            pn544_dev->irq_enabled = true;
+            enable_irq(pn544_dev->client->irq);
+            enable_irq_wake(pn544_dev->client->irq);
+            ret = wait_event_interruptible(
+                    pn544_dev->read_wq,
+                    !pn544_dev->irq_enabled);
+
+            pn544_disable_irq(pn544_dev);
+
+            if (gpio_get_value(pn544_dev->irq_gpio))
+                break;
+
+            pr_warning("%s: spurious interrupt detected\n", __func__);
+            retry_count ++;
+        }
+
+        if(ret) {
+            return;
+        }
+
+        /*
+         * Read response data and copy into hw_type_info
+         * */
+        ret = i2c_master_recv(pn544_dev->client, read_data, 14);
+
+        if(ret) {
+            memcpy(hw_info.data, read_data, ret);
+            hw_info.len = ret;
+            pr_info("%s :data received len  : %d\n", __func__,hw_info.len);
+        }
+        else {
+            pr_err("%s :Read Failed\n", __func__);
+        }
+    }
+}
+#endif
 /*
  * module load/unload record keeping
  */
