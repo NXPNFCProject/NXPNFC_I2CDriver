@@ -390,19 +390,35 @@ static int pn544_dev_open(struct inode *inode, struct file *filp)
     return 0;
 }
 
+static int set_nfc_pid(unsigned long arg)
+{
+    pr_info("%s : The NFC Service PID is %ld\n", __func__, arg);
+    pn544_dev->nfc_service_pid = arg;
+    return 0;
+}
+
 long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         unsigned long arg)
 {
     pr_info("%s :enter cmd = %u, arg = %ld\n", __func__, cmd, arg);
 
-    if (cmd == P544_GET_ESE_ACCESS)
+    /* Free pass autobahn area, not protected. Use it carefullly. START */
+    switch(cmd)
     {
-        return get_ese_lock(P61_STATE_WIRED, arg);
+        case P544_GET_ESE_ACCESS:
+            return get_ese_lock(P61_STATE_WIRED, arg);
+        break;
+        case P544_REL_SVDD_WAIT:
+            return release_svdd_wait();
+        break;
+        case P544_SET_NFC_SERVICE_PID:
+            return set_nfc_pid(arg);
+        break;
+        default:
+        break;
     }
-    else if(cmd == P544_REL_SVDD_WAIT)
-    {
-        return release_svdd_wait();
-    }
+    /* Free pass autobahn area, not protected. Use it carefullly. END */
+
     p61_access_lock(pn544_dev);
     switch (cmd) {
     case PN544_SET_PWR:
@@ -869,13 +885,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
              p61_access_unlock(pn544_dev);
              return -EBADRQC; /* Invalid request code */
         }
-    }
-    break;
-    case P544_SET_NFC_SERVICE_PID:
-    {
-        pr_info("%s : The NFC Service PID is %ld\n", __func__, arg);
-        pn544_dev->nfc_service_pid = arg;
-
     }
     break;
     case P544_SET_POWER_SCHEME:
