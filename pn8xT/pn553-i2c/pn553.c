@@ -60,6 +60,7 @@
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/signal.h>
+#include <linux/workqueue.h>
 /* HiKey Compilation fix */
 #define HiKey_620_COMPILATION_FIX 1
 #ifndef HiKey_620_COMPILATION_FIX
@@ -69,7 +70,7 @@
 #include <linux/timer.h>
 #include "pn553.h"
 
-#define NEXUS5x    0
+#define NEXUS5x    1
 #define HWINFO     0
 #if NEXUS5x
 #undef ISO_RST
@@ -104,6 +105,8 @@ struct pn544_dev    {
     long                nfc_service_pid; /*used to signal the nfc the nfc service */
     chip_pwr_scheme_t   chip_pwr_scheme;
     unsigned int        secure_timer_cnt;
+    struct workqueue_struct *pSecureTimerCbWq;
+    struct work_struct wq_task;
 };
 /* HiKey Compilation fix */
 #ifndef HiKey_620_COMPILATION_FIX
@@ -125,6 +128,8 @@ static long secure_timer_operation(struct pn544_dev *pn544_dev, unsigned long ar
 #if HWINFO
 static void check_hw_info(void);
 #endif
+#define SECURE_TIMER_WORK_QUEUE "SecTimerCbWq"
+
 static void pn544_disable_irq(struct pn544_dev *pn544_dev)
 {
     unsigned long flags;
@@ -926,7 +931,7 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
 }
 EXPORT_SYMBOL(pn544_dev_ioctl);
 
-static void secure_timer_callback( unsigned long data )
+static void secure_timer_workqueue(struct work_struct *Wq)
 {
   p61_access_state_t current_state = P61_STATE_INVALID;
   printk( KERN_INFO "secure_timer_callback: called (%lu).\n", jiffies);
@@ -950,6 +955,16 @@ static void secure_timer_callback( unsigned long data )
   pn544_dev->secure_timer_cnt = 0;
   /* Locking the critical section: ESE_PWR_OFF to allow eSE to shutdown peacefully :: END */
   release_ese_lock(P61_STATE_WIRED);
+  return;
+}
+
+static void secure_timer_callback( unsigned long data )
+{
+    /* Flush and push the timer callback event to the bottom half(work queue)
+    to be executed later, at a safer time */
+    flush_workqueue(pn544_dev->pSecureTimerCbWq);
+    queue_work(pn544_dev->pSecureTimerCbWq, &pn544_dev->wq_task);
+    return;
 }
 
 static long start_seccure_timer(unsigned long timer_value)
@@ -1256,7 +1271,8 @@ static int pn544_probe(struct i2c_client *client,
     sema_init(&ese_access_sema, 1);
     mutex_init(&pn544_dev->p61_state_mutex);
     spin_lock_init(&pn544_dev->irq_enabled_lock);
-
+    pn544_dev->pSecureTimerCbWq = create_workqueue(SECURE_TIMER_WORK_QUEUE);
+    INIT_WORK(&pn544_dev->wq_task, secure_timer_workqueue);
     pn544_dev->pn544_device.minor = MISC_DYNAMIC_MINOR;
     pn544_dev->pn544_device.name = "pn553";
     pn544_dev->pn544_device.fops = &pn544_dev_fops;
@@ -1331,6 +1347,7 @@ static int pn544_remove(struct i2c_client *client)
     gpio_free(pn544_dev->irq_gpio);
     gpio_free(pn544_dev->ven_gpio);
     gpio_free(pn544_dev->ese_pwr_gpio);
+    destroy_workqueue(pn544_dev->pSecureTimerCbWq);
 #ifdef ISO_RST
     gpio_free(pn544_dev->iso_rst_gpio);
 #endif
