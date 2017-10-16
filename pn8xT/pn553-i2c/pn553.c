@@ -70,7 +70,7 @@
 #include <linux/timer.h>
 #include "pn553.h"
 
-#define NEXUS5x    1
+#define NEXUS5x    0
 #define HWINFO     0
 #if NEXUS5x
 #undef ISO_RST
@@ -119,6 +119,7 @@ static bool  sIsWakeLocked = false;
 static struct pn544_dev *pn544_dev;
 static struct semaphore ese_access_sema;
 static struct semaphore svdd_sync_onoff_sema;
+static struct completion dwp_onoff_sema;
 static struct timer_list secure_timer;
 static void release_ese_lock(p61_access_state_t  p61_current_state);
 int get_ese_lock(p61_access_state_t  p61_current_state, int timeout);
@@ -382,6 +383,31 @@ static int release_svdd_wait(void)
     pr_info("%s: Exit\n", __func__);
     return 0;
 }
+
+static void dwp_OnOff(long nfc_service_pid, p61_access_state_t origin)
+{
+    int timeout = 100; //100 ms timeout
+    unsigned long tempJ = msecs_to_jiffies(timeout);
+    if(nfc_service_pid)
+    {
+        if (0 == signal_handler(origin, nfc_service_pid))
+        {
+            init_completion(&dwp_onoff_sema);
+            if(wait_for_completion_timeout(&dwp_onoff_sema, tempJ) != 0)
+            {
+                pr_info("Dwp On/off wait protection: Timeout");
+            }
+            pr_info("Dwp On/Off wait protection : released");
+        }
+    }
+}
+static int release_dwpOnOff_wait(void)
+{
+    pr_info("%s: Enter \n", __func__);
+    complete(&dwp_onoff_sema);
+    return 0;
+}
+
 static int pn544_dev_open(struct inode *inode, struct file *filp)
 {
     struct pn544_dev *pn544_dev = container_of(filp->private_data,
@@ -418,6 +444,9 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         break;
         case P544_SET_NFC_SERVICE_PID:
             return set_nfc_pid(arg);
+        break;
+        case P544_REL_DWPONOFF_WAIT:
+            return release_dwpOnOff_wait();
         break;
         default:
         break;
@@ -540,7 +569,8 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 if (!(current_state & P61_STATE_JCP_DWNLD)){
                     if(pn544_dev->nfc_service_pid){
                         pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
-                        signal_handler(P61_STATE_SPI, pn544_dev->nfc_service_pid);
+                        /*signal_handler(P61_STATE_SPI, pn544_dev->nfc_service_pid);*/
+                        dwp_OnOff(pn544_dev->nfc_service_pid, P61_STATE_SPI);
                     }
                     else{
                         pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
@@ -720,7 +750,8 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 if (current_state & P61_STATE_WIRED){
                     if(pn544_dev->nfc_service_pid){
                         pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
-                        signal_handler(P61_STATE_SPI_PRIO, pn544_dev->nfc_service_pid);
+                        /*signal_handler(P61_STATE_SPI_PRIO, pn544_dev->nfc_service_pid);*/
+                        dwp_OnOff(pn544_dev->nfc_service_pid, P61_STATE_SPI_PRIO);
                     }
                     else{
                         pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn544_dev->nfc_service_pid);

@@ -92,8 +92,17 @@
  *
 */
 #define PN544_SET_DWNLD_STATUS    _IOW(PN544_MAGIC, 0x09, long)
+/*
+  NFC will call the ioctl to release the dwp on/off protection
+*/
+#define P544_REL_DWPONOFF_WAIT _IOW(PN544_MAGIC, 0x0A, long)
 
-#define P544_SECURE_TIMER_SESSION _IOW(PN544_MAGIC, 0x0A, long)
+/*
+  NFC will call the ioctl to start Secure Timer
+*/
+
+#define P544_SECURE_TIMER_SESSION _IOW(PN544_MAGIC, 0x0B, long)
+
 #define MAX_ESE_ACCESS_TIME_OUT_MS 200 /*100 milliseconds*/
 
 typedef enum p61_access_state{
