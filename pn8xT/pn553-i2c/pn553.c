@@ -546,6 +546,14 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             msleep(50);
             pr_info("%s ISO RESET from DWP DONE\n", __func__);
 #endif
+        } else if (arg == 4) {
+            pr_info("%s FW dwldioctl called from NFC \n", __func__);
+            /*NFC Service called FW dwnld*/
+            if (pn544_dev->firm_gpio) {
+                p61_update_access_state(pn544_dev, P61_STATE_DWNLD, true);
+                gpio_set_value(pn544_dev->firm_gpio, 1);
+                msleep(10);
+            }
         }
         else {
             pr_err("%s bad arg %lu\n", __func__, arg);
