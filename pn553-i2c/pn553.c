@@ -81,6 +81,9 @@
 #define SIG_NFC 44
 #define MAX_BUFFER_SIZE 512
 #define MAX_SECURE_SESSIONS 1
+/* VEN is kept ON all the time if you define the macro VEN_ALWAYS_ON.
+Used for SN100 usecases */
+#define VEN_ALWAYS_ON
 /* Macro added to disable SVDD power toggling */
 /* #define JCOP_4X_VALIDATION */
 
@@ -476,17 +479,21 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 /* power on with firmware download (requires hw reset)
                  */
                 pr_info("%s power on with firmware\n", __func__);
+                #ifndef VEN_ALWAYS_ON
                 gpio_set_value(pn544_dev->ven_gpio, 1);
                 msleep(10);
+                #endif
                 if (pn544_dev->firm_gpio) {
                     p61_update_access_state(pn544_dev, P61_STATE_DWNLD, true);
                     gpio_set_value(pn544_dev->firm_gpio, 1);
                 }
+                #ifndef VEN_ALWAYS_ON
                 msleep(10);
                 gpio_set_value(pn544_dev->ven_gpio, 0);
                 msleep(10);
                 gpio_set_value(pn544_dev->ven_gpio, 1);
                 msleep(10);
+                #endif
             }
         } else if (arg == 1) {
             /* power on */
@@ -502,9 +509,11 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             }
 
             pn544_dev->nfc_ven_enabled = true;
+            #ifndef VEN_ALWAYS_ON
             if (pn544_dev->spi_ven_enabled == false || (pn544_dev->chip_pwr_scheme == PN80T_EXT_PMU_SCHEME)) {
                 gpio_set_value(pn544_dev->ven_gpio, 1);
             }
+            #endif
         } else if (arg == 0) {
             /* power off */
             pr_info("%s power off\n", __func__);
@@ -517,10 +526,12 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
 
             pn544_dev->nfc_ven_enabled = false;
             /* Don't change Ven state if spi made it high */
+            #ifndef VEN_ALWAYS_ON
             if ((pn544_dev->spi_ven_enabled == false && !(pn544_dev->secure_timer_cnt))
             || (pn544_dev->chip_pwr_scheme == PN80T_EXT_PMU_SCHEME)) {
                 gpio_set_value(pn544_dev->ven_gpio, 0);
             }
+            #endif
             /* HiKey Compilation fix */
             #ifndef HiKey_620_COMPILATION_FIX
             if (sIsWakeLocked == true) {
@@ -588,13 +599,14 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
 
                 if(pn544_dev->chip_pwr_scheme == PN80T_EXT_PMU_SCHEME)
                     break;
-
+                #ifndef VEN_ALWAYS_ON
                 if (pn544_dev->nfc_ven_enabled == false)
                 {
                     /* provide power to NFCC if, NFC service not provided */
                     gpio_set_value(pn544_dev->ven_gpio, 1);
                     msleep(10);
                 }
+                #endif
                 /* pull the gpio to high once NFCC is power on*/
                 gpio_set_value(pn544_dev->ese_pwr_gpio, 1);
 
@@ -648,10 +660,12 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                     svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_END);
                 }
 #ifndef JCOP_4X_VALIDATION
+                #ifndef VEN_ALWAYS_ON
                 if ((pn544_dev->nfc_ven_enabled == false) && !(pn544_dev->secure_timer_cnt)) {
                      gpio_set_value(pn544_dev->ven_gpio, 0);
                      msleep(10);
-                 }
+                }
+                #endif
 #endif
               }else if(current_state & P61_STATE_SPI){
                   p61_update_access_state(pn544_dev, P61_STATE_SPI, false);
@@ -711,11 +725,13 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                       }
                   }
                   pn544_dev->spi_ven_enabled = false;
+#ifndef VEN_ALWAYS_ON
                   if (pn544_dev->nfc_ven_enabled == false && (pn544_dev->chip_pwr_scheme != PN80T_EXT_PMU_SCHEME)
                        && !(pn544_dev->secure_timer_cnt)) {
                       gpio_set_value(pn544_dev->ven_gpio, 0);
                       msleep(10);
                   }
+#endif
             } else {
                 pr_err("%s : PN61_SET_SPI_PWR - failed, current_state = %x \n",
                         __func__, pn544_dev->p61_current_state);
@@ -728,11 +744,13 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 if (pn544_dev->spi_ven_enabled == false)
                 {
                     pn544_dev->spi_ven_enabled = true;
+                    #ifndef VEN_ALWAYS_ON
                     if ((pn544_dev->nfc_ven_enabled == false) && (pn544_dev->chip_pwr_scheme != PN80T_EXT_PMU_SCHEME)) {
                         /* provide power to NFCC if, NFC service not provided */
                         gpio_set_value(pn544_dev->ven_gpio, 1);
                         msleep(10);
                     }
+                    #endif
                 }
                 if(pn544_dev->chip_pwr_scheme != PN80T_EXT_PMU_SCHEME  && !(pn544_dev->secure_timer_cnt))
                 {
@@ -768,11 +786,13 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 pn544_dev->spi_ven_enabled = true;
                 if(pn544_dev->chip_pwr_scheme != PN80T_EXT_PMU_SCHEME)
                 {
+                    #ifndef VEN_ALWAYS_ON
                     if (pn544_dev->nfc_ven_enabled == false) {
                         /* provide power to NFCC if, NFC service not provided */
                         gpio_set_value(pn544_dev->ven_gpio, 1);
                         msleep(10);
                     }
+                    #endif
                     /* pull the gpio to high once NFCC is power on*/
                     gpio_set_value(pn544_dev->ese_pwr_gpio, 1);
 
@@ -985,11 +1005,13 @@ static void secure_timer_workqueue(struct work_struct *Wq)
       gpio_set_value(pn544_dev->ese_pwr_gpio, 0);
       /* Delay (2.5ms) after SVDD_PWR_OFF for the shutdown settlement time */
       usleep_range(2500, 3000);
+      #ifndef VEN_ALWAYS_ON
       if(pn544_dev->nfc_service_pid == 0x00)
       {
           gpio_set_value(pn544_dev->ven_gpio, 0);
           printk( KERN_INFO "secure_timer_callback :make ven_gpio low, state = %d", current_state);
       }
+      #endif
   }
   pn544_dev->secure_timer_cnt = 0;
   /* Locking the critical section: ESE_PWR_OFF to allow eSE to shutdown peacefully :: END */
@@ -1279,11 +1301,19 @@ static int pn544_probe(struct i2c_client *client,
         pr_err("%s :not able to set irq_gpio as input\n", __func__);
         goto err_ven;
     }
+    #ifndef VEN_ALWAYS_ON
     ret = gpio_direction_output(pn544_dev->ven_gpio, 0);
     if (ret < 0) {
         pr_err("%s : not able to set ven_gpio as output\n", __func__);
         goto err_firm;
     }
+    #else
+    ret = gpio_direction_output(pn544_dev->ven_gpio, 1);
+    if (ret < 0) {
+        pr_err("%s : not able to set ven_gpio as output\n", __func__);
+        goto err_firm;
+    }
+    #endif
     ret = gpio_direction_output(pn544_dev->ese_pwr_gpio, 0);
     if (ret < 0) {
         pr_err("%s : not able to set ese_pwr gpio as output\n", __func__);
@@ -1343,6 +1373,12 @@ static int pn544_probe(struct i2c_client *client,
     enable_irq_wake(pn544_dev->client->irq);
     pn544_disable_irq(pn544_dev);
     i2c_set_clientdata(client, pn544_dev);
+#ifdef VEN_ALWAYS_ON
+    gpio_set_value(pn544_dev->ven_gpio, 0);
+    msleep(3);
+    gpio_set_value(pn544_dev->ven_gpio, 1);
+#endif
+
 #if HWINFO
     /*
      * This function is used only if
