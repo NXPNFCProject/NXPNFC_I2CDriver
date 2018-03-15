@@ -20,7 +20,7 @@
  *
  *  The original Work has been changed by NXP Semiconductors.
  *
- *  Copyright (C) 2013-2014 NXP Semiconductors
+ *  Copyright (C) 2013-2018 NXP Semiconductors
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -371,6 +371,7 @@ static void svdd_sync_onoff(long nfc_service_pid, p61_access_state_t origin)
             {
                 pr_info("svdd wait protection: Timeout");
             }
+            msleep(10);
             pr_info("svdd wait protection : released");
         }
     }
