@@ -479,21 +479,18 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 /* power on with firmware download (requires hw reset)
                  */
                 pr_info("%s power on with firmware\n", __func__);
-                #ifndef VEN_ALWAYS_ON
                 gpio_set_value(pn544_dev->ven_gpio, 1);
                 msleep(10);
-                #endif
                 if (pn544_dev->firm_gpio) {
                     p61_update_access_state(pn544_dev, P61_STATE_DWNLD, true);
                     gpio_set_value(pn544_dev->firm_gpio, 1);
                 }
-                #ifndef VEN_ALWAYS_ON
+
                 msleep(10);
                 gpio_set_value(pn544_dev->ven_gpio, 0);
                 msleep(10);
                 gpio_set_value(pn544_dev->ven_gpio, 1);
                 msleep(10);
-                #endif
             }
         } else if (arg == 1) {
             /* power on */
