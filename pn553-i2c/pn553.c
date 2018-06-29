@@ -1371,6 +1371,10 @@ static int pn544_probe(struct i2c_client *client,
     pn544_disable_irq(pn544_dev);
     i2c_set_clientdata(client, pn544_dev);
 #ifdef VEN_ALWAYS_ON
+    msleep(5); /* VBAT--> VDDIO(HIGH) + Guardtime of min 5ms --> VEN(HIGH) */
+    /* VEN toggle(reset) to proceed */
+    gpio_set_value(pn544_dev->ven_gpio, 1);
+    msleep(3);
     gpio_set_value(pn544_dev->ven_gpio, 0);
     msleep(3);
     gpio_set_value(pn544_dev->ven_gpio, 1);
