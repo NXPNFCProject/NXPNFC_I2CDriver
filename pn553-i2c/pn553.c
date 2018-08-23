@@ -602,6 +602,11 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 /* Delay (10ms) after SVDD_PWR_ON to allow JCOP to bootup (5ms jcop boot time + 5ms guard time) */
                 usleep_range(10000, 12000);
 
+            } else if ((current_state & (P61_STATE_SPI|P61_STATE_SPI_PRIO))
+                 && (gpio_get_value(pn544_dev->ese_pwr_gpio)) && (gpio_get_value(pn544_dev->ven_gpio))) {
+                /* Returning success if SET_SPM_POWER called while already SPI is open */
+                   p61_access_unlock(pn544_dev);
+                   return 0;
             } else {
                 pr_info("%s : PN61_SET_SPI_PWR -  power on ese failed \n", __func__);
                 p61_access_unlock(pn544_dev);
