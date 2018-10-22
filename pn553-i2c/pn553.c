@@ -569,7 +569,12 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             gpio_set_value(pn544_dev->ven_gpio, 1);
             msleep(10);
             pr_info("%s VEN reset DONE >>>>>>>\n", __func__);
-        } else {
+        }  else if (arg == 6) {
+            if (pn544_dev->firm_gpio) {
+                gpio_set_value(pn544_dev->firm_gpio, 0);
+            }
+            pr_info("%s FW GPIO set to 0x00 >>>>>>>\n", __func__);
+        }else {
             pr_err("%s bad arg %lu\n", __func__, arg);
             /* changed the p61 state to idle*/
             p61_access_unlock(pn544_dev);
