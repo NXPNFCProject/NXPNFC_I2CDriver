@@ -119,7 +119,8 @@ typedef enum p61_access_state{
     P61_STATE_SPI_SVDD_SYNC_START = 0x0001, /*ESE_VDD Low req by SPI*/
     P61_STATE_SPI_SVDD_SYNC_END = 0x0002, /*ESE_VDD is Low by SPI*/
     P61_STATE_DWP_SVDD_SYNC_START = 0x0004, /*ESE_VDD  Low req by Nfc*/
-    P61_STATE_DWP_SVDD_SYNC_END = 0x0008 /*ESE_VDD is Low by Nfc*/
+    P61_STATE_DWP_SVDD_SYNC_END = 0x0008, /*ESE_VDD is Low by Nfc*/
+    P61_STATE_SPI_FAILED = 0x0010 /*SPI open/close failed*/
 }p61_access_state_t;
 
 typedef enum chip_type_pwr_scheme{
@@ -127,6 +128,11 @@ typedef enum chip_type_pwr_scheme{
     PN80T_LEGACY_PWR_SCHEME,
     PN80T_EXT_PMU_SCHEME,
 }chip_pwr_scheme_t;
+
+typedef enum {
+    STATUS_FAILED = -1,
+    STATUS_SUCCESS = (0x0000),
+} STATUS;
 
 typedef enum jcop_dwnld_state{
     JCP_DWNLD_IDLE = P61_STATE_JCP_DWNLD,   /* jcop dwnld is ongoing*/

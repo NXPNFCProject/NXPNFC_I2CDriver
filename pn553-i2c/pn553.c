@@ -96,7 +96,6 @@ struct pn544_dev    {
 #ifdef ISO_RST
     unsigned int        iso_rst_gpio; /* ISO-RST pin gpio*/
 #endif
-    struct mutex        p61_state_mutex; /* used to make p61_current_state flag secure */
     p61_access_state_t  p61_current_state; /* stores the current P61 state */
     bool                nfc_ven_enabled; /* stores the VEN pin state powered by Nfc */
     bool                spi_ven_enabled; /* stores the VEN pin state powered by Spi */
@@ -105,6 +104,7 @@ struct pn544_dev    {
     long                nfc_service_pid; /*used to signal the nfc the nfc service */
     chip_pwr_scheme_t   chip_pwr_scheme;
     unsigned int        secure_timer_cnt;
+    unsigned long       dwpLinkUpdateStat; /*DWP link update status*/
     struct workqueue_struct *pSecureTimerCbWq;
     struct work_struct wq_task;
 };
@@ -119,7 +119,10 @@ static bool  sIsWakeLocked = false;
 static struct pn544_dev *pn544_dev;
 static struct semaphore ese_access_sema;
 static struct semaphore svdd_sync_onoff_sema;
+/*semaphore to wait till JNI operation is completed for SPI on/off*/
 static struct completion dwp_onoff_sema;
+/* semaphore to lock SPI open request until signal handling is complete */
+static struct semaphore dwp_onoff_release_sema;
 static struct timer_list secure_timer;
 static void release_ese_lock(p61_access_state_t  p61_current_state);
 int get_ese_lock(p61_access_state_t  p61_current_state, int timeout);
@@ -277,7 +280,7 @@ static ssize_t pn544_dev_write(struct file *filp, const char __user *buf,
 
 static void p61_update_access_state(struct pn544_dev *pn544_dev, p61_access_state_t current_state, bool set)
 {
-    pr_info("%s: Enter current_state = %x\n", __func__, pn544_dev->p61_current_state);
+    //pr_info("%s: Enter current_state = %x\n", __func__, pn544_dev->p61_current_state);
     if (current_state)
     {
         if(set){
@@ -291,7 +294,7 @@ static void p61_update_access_state(struct pn544_dev *pn544_dev, p61_access_stat
                 pn544_dev->p61_current_state = P61_STATE_IDLE;
         }
     }
-    pr_info("%s: Exit current_state = %x\n", __func__, pn544_dev->p61_current_state);
+    //pr_info("%s: Exit current_state = %x\n", __func__, pn544_dev->p61_current_state);
 }
 
 static void p61_get_access_state(struct pn544_dev *pn544_dev, p61_access_state_t *current_state)
@@ -299,22 +302,10 @@ static void p61_get_access_state(struct pn544_dev *pn544_dev, p61_access_state_t
 
     if (current_state == NULL) {
         //*current_state = P61_STATE_INVALID;
-        pr_err("%s : invalid state of p61_access_state_t current state  \n", __func__);
+        //pr_err("%s : invalid state of p61_access_state_t current state  \n", __func__);
     } else {
         *current_state = pn544_dev->p61_current_state;
     }
-}
-static void p61_access_lock(struct pn544_dev *pn544_dev)
-{
-    pr_info("%s: Enter\n", __func__);
-    mutex_lock(&pn544_dev->p61_state_mutex);
-    pr_info("%s: Exit\n", __func__);
-}
-static void p61_access_unlock(struct pn544_dev *pn544_dev)
-{
-    pr_info("%s: Enter\n", __func__);
-    mutex_unlock(&pn544_dev->p61_state_mutex);
-    pr_info("%s: Exit\n", __func__);
 }
 
 static int signal_handler(p61_access_state_t state, long nfc_pid)
@@ -323,7 +314,7 @@ static int signal_handler(p61_access_state_t state, long nfc_pid)
     pid_t pid;
     struct task_struct *task;
     int sigret = 0, ret = 0;
-    pr_info("%s: Enter\n", __func__);
+    //pr_info("%s: Enter\n", __func__);
 
     if(nfc_pid == 0)
     {
@@ -353,60 +344,68 @@ static int signal_handler(p61_access_state_t state, long nfc_pid)
              ret = -1;
         }
     }
-    pr_info("%s: Exit ret = %d\n", __func__, ret);
+    //pr_info("%s: Exit ret = %d\n", __func__, ret);
     return ret;
 }
-static void svdd_sync_onoff(long nfc_service_pid, p61_access_state_t origin)
+static STATUS svdd_sync_onoff(long nfc_service_pid, p61_access_state_t origin)
 {
-    int timeout = 100; //100 ms timeout
+    int timeout = 4500; // 4500 ms timeout
     unsigned long tempJ = msecs_to_jiffies(timeout);
-    pr_info("%s: Enter nfc_service_pid: %ld\n", __func__, nfc_service_pid);
-    if(nfc_service_pid)
-    {
-        if (0 == signal_handler(origin, nfc_service_pid))
-        {
-            sema_init(&svdd_sync_onoff_sema, 0);
+    //pr_info("%s: Enter nfc_service_pid: %ld\n", __func__, nfc_service_pid);
+    sema_init(&svdd_sync_onoff_sema, 0);
+    if (nfc_service_pid) {
+        if (0 == signal_handler(origin, nfc_service_pid)) {
             pr_info("Waiting for svdd protection response");
-            if(down_timeout(&svdd_sync_onoff_sema, tempJ) != 0)
-            {
+            if (down_timeout(&svdd_sync_onoff_sema, tempJ) != 0) {
                 pr_info("svdd wait protection: Timeout");
+                return STATUS_FAILED;
             }
             msleep(10);
-            pr_info("svdd wait protection : released");
+            //pr_info("svdd wait protection : released");
         }
     }
-    pr_info("%s: Exit\n", __func__);
+    return (pn544_dev->dwpLinkUpdateStat == 0x00) ? STATUS_SUCCESS : STATUS_FAILED;
+    //pr_info("%s: Exit\n", __func__);
 }
 static int release_svdd_wait(void)
 {
-    pr_info("%s: Enter \n", __func__);
+    //pr_info("%s: Enter \n", __func__);
     up(&svdd_sync_onoff_sema);
-    pr_info("%s: Exit\n", __func__);
+    //pr_info("%s: Exit\n", __func__);
     return 0;
 }
 
-static void dwp_OnOff(long nfc_service_pid, p61_access_state_t origin)
+static STATUS dwp_OnOff(long nfc_service_pid, p61_access_state_t origin)
 {
-    int timeout = 100; //100 ms timeout
+    int timeout = 4500; // 4500 ms timeout
     unsigned long tempJ = msecs_to_jiffies(timeout);
-    if(nfc_service_pid)
-    {
-        if (0 == signal_handler(origin, nfc_service_pid))
-        {
-            init_completion(&dwp_onoff_sema);
-            if(wait_for_completion_timeout(&dwp_onoff_sema, tempJ) != 0)
-            {
+    init_completion(&dwp_onoff_sema);
+    if (nfc_service_pid) {
+        if (0 == signal_handler(origin, nfc_service_pid)) {
+            if (wait_for_completion_timeout(&dwp_onoff_sema, tempJ) == 0) {
                 pr_info("Dwp On/off wait protection: Timeout");
+                return STATUS_FAILED;
             }
-            pr_info("Dwp On/Off wait protection : released");
+            //pr_info("Dwp On/Off wait protection : released");
         }
     }
+    return (pn544_dev->dwpLinkUpdateStat == 0x00) ? STATUS_SUCCESS : STATUS_FAILED;
 }
 static int release_dwpOnOff_wait(void)
 {
+    int timeout = 500; // 500 ms timeout
+    unsigned long tempJ = msecs_to_jiffies(timeout);
     pr_info("%s: Enter \n", __func__);
     complete(&dwp_onoff_sema);
-    return 0;
+    {
+        sema_init(&dwp_onoff_release_sema, 0);
+        /*release JNI only after all the SPI On related actions are completed*/
+        if (down_timeout(&dwp_onoff_release_sema, tempJ) != 0) {
+        //pr_info("Dwp On/off release wait protection: Timeout");
+        }
+    //pr_info("Dwp On/Off release wait protection : released");
+    }
+  return 0;
 }
 
 static int pn544_dev_open(struct inode *inode, struct file *filp)
@@ -424,7 +423,7 @@ static int pn544_dev_open(struct inode *inode, struct file *filp)
 
 static int set_nfc_pid(unsigned long arg)
 {
-    pr_info("%s : The NFC Service PID is %ld\n", __func__, arg);
+    //pr_info("%s : The NFC Service PID is %ld\n", __func__, arg);
     pn544_dev->nfc_service_pid = arg;
     return 0;
 }
@@ -441,12 +440,14 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             return get_ese_lock(P61_STATE_WIRED, arg);
         break;
         case P544_REL_SVDD_WAIT:
+            pn544_dev->dwpLinkUpdateStat = arg;
             return release_svdd_wait();
         break;
         case P544_SET_NFC_SERVICE_PID:
             return set_nfc_pid(arg);
         break;
         case P544_REL_DWPONOFF_WAIT:
+           pn544_dev->dwpLinkUpdateStat = arg;
             return release_dwpOnOff_wait();
         break;
         default:
@@ -454,7 +455,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
     }
     /* Free pass autobahn area, not protected. Use it carefullly. END */
 
-    p61_access_lock(pn544_dev);
     switch (cmd) {
     case PN544_SET_PWR:
     {
@@ -467,7 +467,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                  * by SPI
                  */
                 pr_info("%s NFCC should not be allowed to reset/FW download \n", __func__);
-                p61_access_unlock(pn544_dev);
                 return -EBUSY; /* Device or resource busy */
             }
             pn544_dev->nfc_ven_enabled = true;
@@ -534,7 +533,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             p61_access_state_t current_state = P61_STATE_INVALID;
             p61_get_access_state(pn544_dev, &current_state);
             if(current_state & (P61_STATE_SPI|P61_STATE_SPI_PRIO)) {
-                p61_access_unlock(pn544_dev);
                 return -EPERM; /* Operation not permitted */
             }
             if(current_state & P61_STATE_WIRED) {
@@ -559,7 +557,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         else {
             pr_err("%s bad arg %lu\n", __func__, arg);
             /* changed the p61 state to idle*/
-            p61_access_unlock(pn544_dev);
             return -EINVAL;
         }
     }
@@ -568,23 +565,30 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
     {
         p61_access_state_t current_state = P61_STATE_INVALID;
         p61_get_access_state(pn544_dev, &current_state);
-        if (arg == 1) {
-            pr_info("%s : PN61_SET_SPI_PWR - power on ese\n", __func__);
-            if ((current_state & (P61_STATE_SPI|P61_STATE_SPI_PRIO)) == 0)
+        /*For chipType pn557 (5th bit of arg) do not trigger signal*/
+        bool isSignalTriggerReqd = !(arg & 0x10);
+        unsigned long pwrLevel = arg & 0x0F;
+        if (pwrLevel == 1) {
+            //pr_info("%s : PN61_SET_SPI_PWR - power on ese\n", __func__);
+            if (((current_state & (P61_STATE_SPI|P61_STATE_SPI_PRIO)) == 0) || (current_state & P61_STATE_SPI_FAILED))
             {
-                p61_update_access_state(pn544_dev, P61_STATE_SPI, true);
                 /*To handle triple mode protection signal
                 NFC service when SPI session started*/
-                if (!(current_state & P61_STATE_JCP_DWNLD)){
+                if (isSignalTriggerReqd && !(current_state & P61_STATE_JCP_DWNLD)){
                     if(pn544_dev->nfc_service_pid){
-                        pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
-                        /*signal_handler(P61_STATE_SPI, pn544_dev->nfc_service_pid);*/
-                        dwp_OnOff(pn544_dev->nfc_service_pid, P61_STATE_SPI);
+                        //pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
+                        STATUS stat = dwp_OnOff(pn544_dev->nfc_service_pid, P61_STATE_SPI);
+                        if(stat != STATUS_SUCCESS) {
+                            pr_info(" %s DWP link activation failed. Returning..", __func__);
+                            p61_update_access_state(pn544_dev, P61_STATE_SPI_FAILED, true);
+                            return stat;
+                        }
                     }
                     else{
                         pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
                     }
                 }
+
                 pn544_dev->spi_ven_enabled = true;
 
                 if(pn544_dev->chip_pwr_scheme == PN80T_EXT_PMU_SCHEME)
@@ -601,25 +605,30 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
 
                 /* Delay (10ms) after SVDD_PWR_ON to allow JCOP to bootup (5ms jcop boot time + 5ms guard time) */
                 usleep_range(10000, 12000);
+                if(current_state & P61_STATE_SPI_FAILED){
+                    p61_update_access_state(pn544_dev, P61_STATE_SPI_FAILED, false);
+                }
+                p61_update_access_state(pn544_dev, P61_STATE_SPI, true);
+                if (pn544_dev->nfc_service_pid) {
+                  up(&dwp_onoff_release_sema);
+                }
 
             } else if ((current_state & (P61_STATE_SPI|P61_STATE_SPI_PRIO))
                  && (gpio_get_value(pn544_dev->ese_pwr_gpio)) && (gpio_get_value(pn544_dev->ven_gpio))) {
                 /* Returning success if SET_SPM_POWER called while already SPI is open */
-                   p61_access_unlock(pn544_dev);
                    return 0;
             } else {
                 pr_info("%s : PN61_SET_SPI_PWR -  power on ese failed \n", __func__);
-                p61_access_unlock(pn544_dev);
                 return -EBUSY; /* Device or resource busy */
             }
-        } else if (arg == 0) {
-            pr_info("%s : PN61_SET_SPI_PWR - power off ese\n", __func__);
+        } else if (pwrLevel == 0) {
+            //pr_info("%s : PN61_SET_SPI_PWR - power off ese\n", __func__);
             if(current_state & P61_STATE_SPI_PRIO){
                 p61_update_access_state(pn544_dev, P61_STATE_SPI_PRIO, false);
                 if (!(current_state & P61_STATE_JCP_DWNLD))
                 {
                     if(pn544_dev->nfc_service_pid){
-                        pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
+                        //pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
                         if(!(current_state & P61_STATE_WIRED))
                         {
                             svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_START |
@@ -659,19 +668,26 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                      msleep(10);
                  }
 #endif
-              }else if(current_state & P61_STATE_SPI){
-                  p61_update_access_state(pn544_dev, P61_STATE_SPI, false);
+              }else if((current_state & P61_STATE_SPI) || (current_state & P61_STATE_SPI_FAILED)){
                   if (!(current_state & P61_STATE_WIRED) &&
                       (pn544_dev->chip_pwr_scheme != PN80T_EXT_PMU_SCHEME) &&
                       !(current_state & P61_STATE_JCP_DWNLD))
                   {
-                      if(pn544_dev->nfc_service_pid){
-                          pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
-                          svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_START | P61_STATE_SPI_END);
-                       }
-                       else{
-                           pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
-                       }
+                    if(isSignalTriggerReqd) {
+                        if(pn544_dev->nfc_service_pid){
+                            //pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
+                          STATUS stat = svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_START | P61_STATE_SPI_END);
+                          if(stat != STATUS_SUCCESS) {
+                          pr_info(" %s DWP link deactivation Failed. Returning..", __func__);
+                          p61_update_access_state(pn544_dev, P61_STATE_SPI_FAILED, true);
+                          return stat;
+                          }
+                         }
+                        else{
+                             pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
+                        }
+                   }
+
                        /* if secure timer is running, Delay the SPI close by 25ms after sending End of Apdu to enable eSE go into DPD
                             gracefully (20ms after EOS + 5ms DPD settlement time) */
                        if(pn544_dev->secure_timer_cnt)
@@ -683,6 +699,12 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                           /* Delay (2.5ms) after SVDD_PWR_OFF for the shutdown settlement time */
                           usleep_range(2500, 3000);
 #endif
+                          if(current_state & P61_STATE_SPI_FAILED) {
+                              p61_update_access_state(pn544_dev, P61_STATE_SPI_FAILED, false);
+                          }
+                          p61_update_access_state(pn544_dev, P61_STATE_SPI,
+                                                  false);
+                          if(isSignalTriggerReqd)
                           svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_END);
                        }
                   }
@@ -690,30 +712,43 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                   protection signal NFC service */
                   else
                   {
-                      if (!(current_state & P61_STATE_JCP_DWNLD))
-                      {
-                          if(pn544_dev->nfc_service_pid){
-                              pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
-                              if(pn544_dev->chip_pwr_scheme == PN80T_LEGACY_PWR_SCHEME)
-                              {
-                                  svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_START | P61_STATE_SPI_END);
-                              } else {
-                                  signal_handler(P61_STATE_SPI_END, pn544_dev->nfc_service_pid);
-                              }
-                           }
-                           else{
-                               pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
-                           }
-                      } else if (pn544_dev->chip_pwr_scheme == PN80T_LEGACY_PWR_SCHEME) {
-                          svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_START);
+                      if(isSignalTriggerReqd) {
+                          if (!(current_state & P61_STATE_JCP_DWNLD))
+                          {
+                              if(pn544_dev->nfc_service_pid){
+                                  //pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
+                                  if(pn544_dev->chip_pwr_scheme == PN80T_LEGACY_PWR_SCHEME)
+                                  {
+                                      STATUS stat = svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_START | P61_STATE_SPI_END);
+                                      if(stat != STATUS_SUCCESS) {
+                                          pr_info(" %s DWP link deactivation Failed. Returning..", __func__);
+                                          p61_update_access_state(pn544_dev, P61_STATE_SPI_FAILED, true);
+                                          return stat;
+                                      }
+                                  } else {
+                                      signal_handler(P61_STATE_SPI_END, pn544_dev->nfc_service_pid);
+                                  }
+                               }
+                               else{
+                                   pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
+                               }
+                          } else if (pn544_dev->chip_pwr_scheme == PN80T_LEGACY_PWR_SCHEME) {
+                              svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_START);
+                          }
                       }
                       if(pn544_dev->chip_pwr_scheme == PN80T_LEGACY_PWR_SCHEME)
                       {
 #ifndef JCOP_4X_VALIDATION
                           gpio_set_value(pn544_dev->ese_pwr_gpio, 0);
 #endif
+                          if(current_state & P61_STATE_SPI_FAILED){
+                              p61_update_access_state(pn544_dev, P61_STATE_SPI_FAILED, false);
+                          }
+                          p61_update_access_state(pn544_dev, P61_STATE_SPI,
+                                                  false);
+                          if(isSignalTriggerReqd)
                           svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_END);
-                          pr_info("PN80T legacy ese_pwr_gpio off %s", __func__);
+                          //pr_info("PN80T legacy ese_pwr_gpio off %s", __func__);
                       }
                   }
                   pn544_dev->spi_ven_enabled = false;
@@ -725,7 +760,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             } else {
                 pr_err("%s : PN61_SET_SPI_PWR - failed, current_state = %x \n",
                         __func__, pn544_dev->p61_current_state);
-                p61_access_unlock(pn544_dev);
                 return -EPERM; /* Operation not permitted */
             }
         }else if (arg == 2) {
@@ -754,7 +788,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 }
             } else {
                 pr_info("%s : PN61_SET_SPI_PWR - reset  failed \n", __func__);
-                p61_access_unlock(pn544_dev);
                 return -EBUSY; /* Device or resource busy */
             }
         }else if (arg == 3) {
@@ -787,7 +820,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 }
             }else {
                 pr_info("%s : Prio Session Start power on ese failed \n", __func__);
-                p61_access_unlock(pn544_dev);
                 return -EBUSY; /* Device or resource busy */
             }
         }else if (arg == 4) {
@@ -811,7 +843,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             else
             {
                 pr_info("%s : PN61_SET_SPI_PWR -  Prio Session End failed \n", __func__);
-                p61_access_unlock(pn544_dev);
                 return -EBADRQC; /* Device or resource busy */
             }
         } else if(arg == 5){
@@ -821,7 +852,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             p61_access_state_t current_state = P61_STATE_INVALID;
             p61_get_access_state(pn544_dev, &current_state);
             if(current_state & P61_STATE_WIRED) {
-                p61_access_unlock(pn544_dev);
                 return -EPERM; /* Operation not permitted */
             }
             if(current_state & P61_STATE_SPI) {
@@ -839,7 +869,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         }
         else {
             pr_info("%s bad ese pwr arg %lu\n", __func__, arg);
-            p61_access_unlock(pn544_dev);
             return -EBADRQC; /* Invalid request code */
         }
     }
@@ -849,7 +878,7 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
     {
         p61_access_state_t current_state = P61_STATE_INVALID;
         p61_get_access_state(pn544_dev, &current_state);
-        pr_info("%s: P61_GET_PWR_STATUS  = %x",__func__, current_state);
+        //pr_info("%s: P61_GET_PWR_STATUS  = %x",__func__, current_state);
         put_user(current_state, (int __user *)arg);
     }
     break;
@@ -860,7 +889,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         ret = set_jcop_download_state(arg);
         if(ret < 0)
         {
-            p61_access_unlock(pn544_dev);
             return ret;
         }
     }
@@ -874,12 +902,12 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         {
             if (current_state)
             {
-                pr_info("%s : P61_SET_WIRED_ACCESS - enabling\n", __func__);
+               //pr_info("%s : P61_SET_WIRED_ACCESS - enabling\n", __func__);
                 p61_update_access_state(pn544_dev, P61_STATE_WIRED, true);
                 if (current_state & P61_STATE_SPI_PRIO)
                 {
                     if(pn544_dev->nfc_service_pid){
-                        pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
+                        //pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
                         signal_handler(P61_STATE_SPI_PRIO, pn544_dev->nfc_service_pid);
                     }
                     else{
@@ -890,11 +918,10 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                     gpio_set_value(pn544_dev->ese_pwr_gpio, 1);
             } else {
                 pr_info("%s : P61_SET_WIRED_ACCESS -  enabling failed \n", __func__);
-                p61_access_unlock(pn544_dev);
                 return -EBUSY; /* Device or resource busy */
             }
         } else if (arg == 0) {
-            pr_info("%s : P61_SET_WIRED_ACCESS - disabling \n", __func__);
+           //pr_info("%s : P61_SET_WIRED_ACCESS - disabling \n", __func__);
             if (current_state & P61_STATE_WIRED){
                 p61_update_access_state(pn544_dev, P61_STATE_WIRED, false);
                 if((current_state & (P61_STATE_SPI|P61_STATE_SPI_PRIO)) == 0 && (pn544_dev->chip_pwr_scheme == PN67T_PWR_SCHEME))
@@ -906,13 +933,12 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             } else {
                 pr_err("%s : P61_SET_WIRED_ACCESS - failed, current_state = %x \n",
                         __func__, pn544_dev->p61_current_state);
-                p61_access_unlock(pn544_dev);
                 return -EPERM; /* Operation not permitted */
             }
         }
         else if(arg == 2)
         {
-             pr_info("%s : P61_ESE_GPIO_LOW  \n", __func__);
+            //pr_info("%s : P61_ESE_GPIO_LOW  \n", __func__);
              if(pn544_dev->chip_pwr_scheme == PN67T_PWR_SCHEME)
              {
                  svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_START);
@@ -922,7 +948,7 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         }
         else if(arg == 3)
         {
-            pr_info("%s : P61_ESE_GPIO_HIGH  \n", __func__);
+            //pr_info("%s : P61_ESE_GPIO_HIGH  \n", __func__);
             if(pn544_dev->chip_pwr_scheme == PN67T_PWR_SCHEME)
             gpio_set_value(pn544_dev->ese_pwr_gpio, 1);
         }
@@ -944,7 +970,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         }
         else {
              pr_info("%s P61_SET_WIRED_ACCESS - bad arg %lu\n", __func__, arg);
-             p61_access_unlock(pn544_dev);
              return -EBADRQC; /* Invalid request code */
         }
     }
@@ -954,17 +979,17 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         if(arg == PN67T_PWR_SCHEME)
         {
             pn544_dev->chip_pwr_scheme = PN67T_PWR_SCHEME;
-            pr_info("%s : The power scheme is set to PN67T legacy \n", __func__);
+            //pr_info("%s : The power scheme is set to PN67T legacy \n", __func__);
         }
         else if(arg == PN80T_LEGACY_PWR_SCHEME)
         {
             pn544_dev->chip_pwr_scheme = PN80T_LEGACY_PWR_SCHEME;
-            pr_info("%s : The power scheme is set to PN80T_LEGACY_PWR_SCHEME,\n", __func__);
+            //pr_info("%s : The power scheme is set to PN80T_LEGACY_PWR_SCHEME,\n", __func__);
         }
         else if(arg == PN80T_EXT_PMU_SCHEME)
         {
             pn544_dev->chip_pwr_scheme = PN80T_EXT_PMU_SCHEME;
-            pr_info("%s : The power scheme is set to PN80T_EXT_PMU_SCHEME,\n", __func__);
+            //pr_info("%s : The power scheme is set to PN80T_EXT_PMU_SCHEME,\n", __func__);
         }
         else
         {
@@ -979,10 +1004,8 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
     break;
     default:
         pr_err("%s bad ioctl %u\n", __func__, cmd);
-        p61_access_unlock(pn544_dev);
         return -EINVAL;
     }
-    p61_access_unlock(pn544_dev);
     pr_info("%s :exit cmd = %u, arg = %ld\n", __func__, cmd, arg);
     return 0;
 }
@@ -1128,7 +1151,6 @@ static long set_jcop_download_state(unsigned long arg)
         else
         {
             pr_info("%s bad ese pwr arg %lu\n", __func__, arg);
-            p61_access_unlock(pn544_dev);
             return -EBADRQC; /* Invalid request code */
         }
         pr_info("%s: PN544_SET_DWNLD_STATUS  = %x",__func__, current_state);
@@ -1326,7 +1348,7 @@ static int pn544_probe(struct i2c_client *client,
     init_waitqueue_head(&pn544_dev->read_wq);
     mutex_init(&pn544_dev->read_mutex);
     sema_init(&ese_access_sema, 1);
-    mutex_init(&pn544_dev->p61_state_mutex);
+    sema_init(&dwp_onoff_release_sema, 0);
     spin_lock_init(&pn544_dev->irq_enabled_lock);
     pn544_dev->pSecureTimerCbWq = create_workqueue(SECURE_TIMER_WORK_QUEUE);
     INIT_WORK(&pn544_dev->wq_task, secure_timer_workqueue);
@@ -1374,7 +1396,6 @@ static int pn544_probe(struct i2c_client *client,
     misc_deregister(&pn544_dev->pn544_device);
     err_misc_register:
     mutex_destroy(&pn544_dev->read_mutex);
-    mutex_destroy(&pn544_dev->p61_state_mutex);
     kfree(pn544_dev);
     err_exit:
     if (pn544_dev->firm_gpio)
@@ -1400,7 +1421,6 @@ static int pn544_remove(struct i2c_client *client)
     free_irq(client->irq, pn544_dev);
     misc_deregister(&pn544_dev->pn544_device);
     mutex_destroy(&pn544_dev->read_mutex);
-    mutex_destroy(&pn544_dev->p61_state_mutex);
     gpio_free(pn544_dev->irq_gpio);
     gpio_free(pn544_dev->ven_gpio);
     gpio_free(pn544_dev->ese_pwr_gpio);
