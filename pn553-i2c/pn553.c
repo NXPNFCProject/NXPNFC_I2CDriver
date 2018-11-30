@@ -702,7 +702,8 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                           if(current_state & P61_STATE_SPI_FAILED) {
                               p61_update_access_state(pn544_dev, P61_STATE_SPI_FAILED, false);
                           }
-                          p61_update_access_state(pn544_dev, P61_STATE_SPI,
+                          if(current_state & P61_STATE_SPI)
+                              p61_update_access_state(pn544_dev, P61_STATE_SPI,
                                                   false);
                           if(isSignalTriggerReqd)
                           svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_END);
@@ -744,7 +745,8 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                           if(current_state & P61_STATE_SPI_FAILED){
                               p61_update_access_state(pn544_dev, P61_STATE_SPI_FAILED, false);
                           }
-                          p61_update_access_state(pn544_dev, P61_STATE_SPI,
+                          if(current_state & P61_STATE_SPI)
+                              p61_update_access_state(pn544_dev, P61_STATE_SPI,
                                                   false);
                           if(isSignalTriggerReqd)
                           svdd_sync_onoff(pn544_dev->nfc_service_pid, P61_STATE_SPI_SVDD_SYNC_END);
