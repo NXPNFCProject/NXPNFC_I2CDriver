@@ -764,7 +764,7 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                         __func__, pn544_dev->p61_current_state);
                 return -EPERM; /* Operation not permitted */
             }
-        }else if (arg == 2) {
+        }else if (pwrLevel == 2) {
             pr_info("%s : PN61_SET_SPI_PWR - reset\n", __func__);
             if (current_state & (P61_STATE_IDLE|P61_STATE_SPI|P61_STATE_SPI_PRIO)) {
                 if (pn544_dev->spi_ven_enabled == false)
