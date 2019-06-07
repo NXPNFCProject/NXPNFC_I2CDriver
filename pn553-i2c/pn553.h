@@ -105,6 +105,19 @@
 
 #define MAX_ESE_ACCESS_TIME_OUT_MS 200 /*100 milliseconds*/
 
+/*
+  NFC_ON: Driver is being used by the NFC service
+*/
+#define P544_FLAG_NFC_ON         0x01
+/*
+  FW_DNLD: NFC_ON and FW download is going on
+*/
+#define P544_FLAG_FW_DNLD        0x02
+/*
+  FW_DNLD: NFC_ON and FW download is going on
+*/
+#define P544_FLAG_ESE_COLD_RESET_FROM_DRIVER        0x04
+
 typedef enum p61_access_state{
     P61_STATE_INVALID = 0x0000,
     P61_STATE_IDLE = 0x0100, /* p61 is free to use */

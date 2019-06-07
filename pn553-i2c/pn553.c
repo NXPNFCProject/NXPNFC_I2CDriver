@@ -20,7 +20,7 @@
  *
  *  The original Work has been changed by NXP Semiconductors.
  *
- *  Copyright (C) 2013-2014 NXP Semiconductors
+ *  Copyright (C) 2013-2019 NXP Semiconductors
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -81,6 +81,10 @@
 #define SIG_NFC 44
 #define MAX_BUFFER_SIZE 512
 #define MAX_SECURE_SESSIONS 1
+#define MSG_PROP_GID         0x4F
+#define ESE_CLD_RST_OID      0x1E
+#define ESE_CLD_RST_RSP_SIZE 0x04
+
 /* VEN is kept ON all the time if you define the macro VEN_ALWAYS_ON.
 Used for SN100 usecases */
 #define VEN_ALWAYS_ON
@@ -110,6 +114,18 @@ struct pn544_dev    {
     unsigned int        secure_timer_cnt;
     struct workqueue_struct *pSecureTimerCbWq;
     struct work_struct wq_task;
+  /* Bit value  Status           Remark
+   * b0 : 1  -> NFC_ON           Driver Open should set the flag
+   *      0     NFC_OFF          Driver release should reset this flag
+   * b1 : 1  -> FWDNLD           If FWDNLD is going on.
+   *      0     Normal operation
+   * b2 : 1 -> ese_cold_reset sequence has been triggered from the SPI driver
+   *      0 -> ese_cold_reset cmd has been written by the NFC HAL
+   * bits b3 to b7 : Reserved for the future use.
+   * NOTE: Driver probe function should reset b0-b2 flags.
+   *       The value of b3-b7 flags is undetermined.
+   * */
+    volatile uint8_t    state_flags;
 };
 /* HiKey Compilation fix */
 #ifndef HiKey_620_COMPILATION_FIX
@@ -123,6 +139,8 @@ static struct pn544_dev *pn544_dev;
 static struct semaphore ese_access_sema;
 static struct semaphore svdd_sync_onoff_sema;
 static struct completion dwp_onoff_sema;
+static struct completion ese_cold_reset_sema;
+static int8_t ese_cold_reset_rsp[ESE_CLD_RST_RSP_SIZE];
 static struct timer_list secure_timer;
 static void release_ese_lock(p61_access_state_t  p61_current_state);
 int get_ese_lock(p61_access_state_t  p61_current_state, int timeout);
@@ -147,6 +165,11 @@ static void pn544_disable_irq(struct pn544_dev *pn544_dev)
     spin_unlock_irqrestore(&pn544_dev->irq_enabled_lock, flags);
 }
 
+static int pn544_dev_release(struct inode *inode, struct file *filp) {
+    pn544_dev->state_flags = 0x00;
+    pr_info(KERN_ALERT "Exit %s: NFC driver release \n", __func__);
+    return 0;
+}
 static irqreturn_t pn544_dev_irq_handler(int irq, void *dev_id)
 {
     struct pn544_dev *pn544_dev = dev_id;
@@ -167,6 +190,26 @@ static irqreturn_t pn544_dev_irq_handler(int irq, void *dev_id)
 
 
     return IRQ_HANDLED;
+}
+
+static void rcv_ese_cldrst_status(void)
+{
+    int ret = -1;
+    char tmp[MAX_BUFFER_SIZE];
+    size_t rcount = (size_t)ese_cold_reset_rsp[2];
+    /* Read data: No need to wait for the interrupt */
+    ret = i2c_master_recv(pn544_dev->client, tmp, rcount);
+    if(ret == rcount){
+        ese_cold_reset_rsp[3] = tmp[0];
+        pr_info("%s NxpNciR : len = 4 > %02X%02X%02X%02X\n", __func__,ese_cold_reset_rsp[0],
+                ese_cold_reset_rsp[1],ese_cold_reset_rsp[2],ese_cold_reset_rsp[3]);
+    }else{
+        pr_err("%s : Failed to receive payload of the cold_rst_cmd\n",__func__);
+        ese_cold_reset_rsp[3] = -EIO;
+    }
+    if(pn544_dev->state_flags &(P544_FLAG_NFC_ON)){
+        complete(&ese_cold_reset_sema);
+    }
 }
 
 static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
@@ -218,6 +261,17 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
         sIsWakeLocked = false;
     }
     #endif
+
+    /* if the received response for COLD_RESET_COMMAND
+     * Consume it in driver*/
+    if((pn544_dev->state_flags & P544_FLAG_ESE_COLD_RESET_FROM_DRIVER) &&
+            MSG_PROP_GID == tmp[0] && ESE_CLD_RST_OID == tmp[1]){
+        memset(&ese_cold_reset_rsp, 0, sizeof(ese_cold_reset_rsp));
+        memcpy(ese_cold_reset_rsp, tmp, 3);
+        rcv_ese_cldrst_status();
+        mutex_unlock(&pn544_dev->read_mutex);
+        return 0;
+    }
     mutex_unlock(&pn544_dev->read_mutex);
 
     /* pn544 seems to be slow in handling I2C read requests
@@ -270,7 +324,6 @@ static ssize_t pn544_dev_write(struct file *filp, const char __user *buf,
         pr_err("%s : i2c_master_send returned %d\n", __func__, ret);
         ret = -EIO;
     }
-
     /* pn544 seems to be slow in handling I2C write requests
      * so add 1ms delay after I2C send oparation */
     udelay(1000);
@@ -309,16 +362,70 @@ static void p61_get_access_state(struct pn544_dev *pn544_dev, p61_access_state_t
 }
 static void p61_access_lock(struct pn544_dev *pn544_dev)
 {
-    pr_info("%s: Enter\n", __func__);
     mutex_lock(&pn544_dev->p61_state_mutex);
-    pr_info("%s: Exit\n", __func__);
 }
 static void p61_access_unlock(struct pn544_dev *pn544_dev)
 {
-    pr_info("%s: Enter\n", __func__);
     mutex_unlock(&pn544_dev->p61_state_mutex);
-    pr_info("%s: Exit\n", __func__);
 }
+
+long p61_cold_reset(void)
+{
+    long ret = 0;
+    unsigned int loop=0x03;
+    struct file filp;
+    int timeout = 2000; /* 2s timeout :NCI cmd timeout*/
+    unsigned long tempJ = msecs_to_jiffies(timeout);
+    uint8_t cmd_ese_cold_reset[] = {0x2F, 0x1E, 0x00};
+    filp.private_data = pn544_dev;
+    pr_info("%s: Enter", __func__);
+
+    if(pn544_dev->state_flags & P544_FLAG_FW_DNLD){
+      /* If FW DNLD, Operation is not permitted */
+      pr_err("%s : Operation is not permitted during fwdnld\n", __func__);
+      return -EPERM;
+    }
+    /* pn544_dev_read() should return the rsp if JNI has requested the cold reset*/
+    pn544_dev->state_flags |= (P544_FLAG_ESE_COLD_RESET_FROM_DRIVER);
+    init_completion(&ese_cold_reset_sema);
+    /* write command to I2C line*/
+    do{
+        ret = i2c_master_send(pn544_dev->client, cmd_ese_cold_reset, sizeof(cmd_ese_cold_reset));
+        if (ret == sizeof(cmd_ese_cold_reset)) {
+            break;
+        }
+        loop--;
+        usleep_range(5000, 6000);
+    }while(loop);
+    if(!loop && (ret != sizeof(cmd_ese_cold_reset)) ){
+        pr_err("%s : i2c_master_send returned %ld\n", __func__, ret);
+        pn544_dev->state_flags &= ~(P544_FLAG_ESE_COLD_RESET_FROM_DRIVER);
+        return -EIO;
+    }
+
+    pr_info("%s: NxpNciX: %ld > %02X%02X%02X \n", __func__, ret,cmd_ese_cold_reset[0],
+            cmd_ese_cold_reset[1],cmd_ese_cold_reset[2]);
+    ret = 0x00;
+    if(pn544_dev->state_flags & P544_FLAG_NFC_ON)/* NFC_ON */
+    {
+       /* Read is pending from the NFC service which will complete the ese_cold_reset_sema */
+       if(wait_for_completion_timeout(&ese_cold_reset_sema, tempJ) == 0){
+          pr_err("%s: Timeout", __func__);
+          ese_cold_reset_rsp[3] = -EAGAIN; // Failure case
+       }
+    }else { /* NFC_OFF */
+     /* call the pn544_dev_read() */
+      filp.f_flags &= ~O_NONBLOCK;
+      ret = pn544_dev_read(&filp, NULL,3, 0);
+    }
+    if(0x00 == ret) /* success case */
+        ret = ese_cold_reset_rsp[3];
+    pn544_dev->state_flags &= ~(P544_FLAG_ESE_COLD_RESET_FROM_DRIVER);
+    /* Return the status to the SPI Driver */
+    pr_info("%s: exit, Status:%ld", __func__,ret);
+    return ret;
+}
+EXPORT_SYMBOL(p61_cold_reset);
 
 static int signal_handler(p61_access_state_t state, long nfc_pid)
 {
@@ -377,13 +484,11 @@ static void svdd_sync_onoff(long nfc_service_pid, p61_access_state_t origin)
             pr_info("svdd wait protection : released");
         }
     }
-    pr_info("%s: Exit\n", __func__);
 }
 static int release_svdd_wait(void)
 {
     pr_info("%s: Enter \n", __func__);
     up(&svdd_sync_onoff_sema);
-    pr_info("%s: Exit\n", __func__);
     return 0;
 }
 
@@ -418,7 +523,7 @@ static int pn544_dev_open(struct inode *inode, struct file *filp)
             pn544_device);
 
     filp->private_data = pn544_dev;
-
+    pn544_dev->state_flags |= (P544_FLAG_NFC_ON);
     pr_debug("%s : %d,%d\n", __func__, imajor(inode), iminor(inode));
 
     return 0;
@@ -434,8 +539,6 @@ static int set_nfc_pid(unsigned long arg)
 long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         unsigned long arg)
 {
-    pr_info("%s :enter cmd = %u, arg = %ld\n", __func__, cmd, arg);
-
     /* Free pass autobahn area, not protected. Use it carefullly. START */
     switch(cmd)
     {
@@ -494,7 +597,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             }
         } else if (arg == 1) {
             /* power on */
-            pr_info("%s power on\n", __func__);
             if (pn544_dev->firm_gpio) {
                 if ((current_state & (P61_STATE_WIRED|P61_STATE_SPI|P61_STATE_SPI_PRIO))== 0){
                     p61_update_access_state(pn544_dev, P61_STATE_IDLE, true);
@@ -513,7 +615,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             #endif
         } else if (arg == 0) {
             /* power off */
-            pr_info("%s power off\n", __func__);
             if (pn544_dev->firm_gpio) {
                 if ((current_state & (P61_STATE_WIRED|P61_STATE_SPI|P61_STATE_SPI_PRIO))== 0){
                     p61_update_access_state(pn544_dev, P61_STATE_IDLE, true);
@@ -560,6 +661,7 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             if (pn544_dev->firm_gpio) {
                 p61_update_access_state(pn544_dev, P61_STATE_DWNLD, true);
                 gpio_set_value(pn544_dev->firm_gpio, 1);
+                pn544_dev->state_flags |= (P544_FLAG_FW_DNLD);
                 msleep(10);
             }
         } else if (arg == 5) {
@@ -572,6 +674,7 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         }  else if (arg == 6) {
             if (pn544_dev->firm_gpio) {
                 gpio_set_value(pn544_dev->firm_gpio, 0);
+                pn544_dev->state_flags &= ~(P544_FLAG_FW_DNLD);
             }
             pr_info("%s FW GPIO set to 0x00 >>>>>>>\n", __func__);
         }else {
@@ -993,7 +1096,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         return -EINVAL;
     }
     p61_access_unlock(pn544_dev);
-    pr_info("%s :exit cmd = %u, arg = %ld\n", __func__, cmd, arg);
     return 0;
 }
 EXPORT_SYMBOL(pn544_dev_ioctl);
@@ -1172,6 +1274,7 @@ static const struct file_operations pn544_dev_fops = {
         .read   = pn544_dev_read,
         .write  = pn544_dev_write,
         .open   = pn544_dev_open,
+        .release = pn544_dev_release,
         .unlocked_ioctl  = pn544_dev_ioctl,
 };
 #if DRAGON_NFC
@@ -1304,6 +1407,7 @@ static int pn544_probe(struct i2c_client *client,
     pn544_dev->client   = client;
     pn544_dev->secure_timer_cnt = 0;
 
+    pn544_dev->state_flags = 0x00;
     ret = gpio_direction_input(pn544_dev->irq_gpio);
     if (ret < 0) {
         pr_err("%s :not able to set irq_gpio as input\n", __func__);
