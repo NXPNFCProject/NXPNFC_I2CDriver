@@ -117,6 +117,10 @@
   FW_DNLD: NFC_ON and FW download is going on
 */
 #define P544_FLAG_ESE_COLD_RESET_FROM_DRIVER        0x04
+/*
+  FW_DNLD: NFC_ON and FW download with VEN reset
+*/
+#define P544_FLAG_NFC_VEN_RESET        0x08
 
 typedef enum p61_access_state{
     P61_STATE_INVALID = 0x0000,

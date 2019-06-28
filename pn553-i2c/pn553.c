@@ -167,7 +167,9 @@ static void pn544_disable_irq(struct pn544_dev *pn544_dev)
 
 static int pn544_dev_release(struct inode *inode, struct file *filp) {
     pn544_dev->state_flags = 0x00;
-    pr_info(KERN_ALERT "Exit %s: NFC driver release \n", __func__);
+    if (pn544_dev->firm_gpio)
+        gpio_set_value(pn544_dev->firm_gpio, 0);
+    pr_info(KERN_ALERT "Exit %s: NFC driver release  nfc hal  \n", __func__);
     return 0;
 }
 static irqreturn_t pn544_dev_irq_handler(int irq, void *dev_id)
@@ -244,7 +246,12 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 
             if (ret)
                 goto fail;
-
+            if(pn544_dev->state_flags & P544_FLAG_NFC_VEN_RESET) {
+                pr_warning("%s: releasing read  \n", __func__);
+                pn544_dev->state_flags &= ~P544_FLAG_NFC_VEN_RESET;
+                ret =  -EL3RST;
+                goto fail;
+            }
             if (gpio_get_value(pn544_dev->irq_gpio))
                 break;
 
@@ -665,6 +672,9 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 msleep(10);
             }
         } else if (arg == 5) {
+            pn544_dev->state_flags |= P544_FLAG_NFC_VEN_RESET;
+            pn544_disable_irq(pn544_dev);
+            wake_up(&pn544_dev->read_wq);
             msleep(10);
             gpio_set_value(pn544_dev->ven_gpio, 0);
             msleep(10);
