@@ -106,6 +106,7 @@ static ssize_t nfc_dev_read(struct file *filp, char __user *buf,
     }
     if (count > MAX_BUFFER_SIZE)
         count = MAX_BUFFER_SIZE;
+    pr_debug("%s: start reading of %zu bytes\n", __func__, count);
     mutex_lock(&nfc_dev->read_mutex);
     irq_gpio_val = gpio_get_value(nfc_dev->irq_gpio);
     if (irq_gpio_val == 0) {
@@ -154,6 +155,7 @@ static ssize_t nfc_dev_read(struct file *filp, char __user *buf,
         ret = -EFAULT;
         goto err;
     }
+    pr_debug("%s: Success in reading %zu bytes\n", __func__, count);
     return ret;
 err:
     mutex_unlock(&nfc_dev->read_mutex);
@@ -172,6 +174,7 @@ static ssize_t nfc_dev_write(struct file *filp, const char __user *buf,
     if (count > MAX_BUFFER_SIZE) {
         count = MAX_BUFFER_SIZE;
     }
+    pr_debug("%s: start writing of %zu bytes\n", __func__, count);
     if (copy_from_user(tmp, buf, count)) {
         pr_err("%s : failed to copy from user space\n", __func__);
         return -EFAULT;
@@ -181,6 +184,7 @@ static ssize_t nfc_dev_write(struct file *filp, const char __user *buf,
         pr_err("%s: i2c_master_send returned %d\n", __func__, ret);
         ret = -EIO;
     }
+    pr_debug("%s: Success in writing %zu bytes\n", __func__, count);
     /* delay of 1ms for slow devices*/
     udelay(1000);
     return ret;
