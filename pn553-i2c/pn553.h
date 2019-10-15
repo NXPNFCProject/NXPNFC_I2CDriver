@@ -19,7 +19,7 @@
  *
  *  The original Work has been changed by NXP Semiconductors.
  *
- *  Copyright (C) 2013-2014 NXP Semiconductors
+ *  Copyright (C) 2013-2019 NXP Semiconductors
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -104,6 +104,19 @@
 #define P544_SECURE_TIMER_SESSION _IOW(PN544_MAGIC, 0x0B, long)
 
 #define MAX_ESE_ACCESS_TIME_OUT_MS 200 /*100 milliseconds*/
+
+/*
+  NFC_ON: Driver is being used by the NFC service
+*/
+#define P544_FLAG_NFC_ON         0x01
+/*
+  FW_DNLD: NFC_ON and FW download is going on
+*/
+#define P544_FLAG_FW_DNLD        0x02
+/*
+  COLD_RESET: eSE cold reset is triggered by driver
+*/
+#define P544_FLAG_ESE_COLD_RESET_FROM_DRIVER        0x04
 
 typedef enum p61_access_state{
     P61_STATE_INVALID = 0x0000,
