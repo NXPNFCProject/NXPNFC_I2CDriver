@@ -1,5 +1,5 @@
 /******************************************************************************
- *  Copyright (C) 2019 NXP
+ *  Copyright (C) 2019-2020 NXP
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,30 +16,34 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  ******************************************************************************/
-#ifndef _NFC_I2C_H_
-#define _NFC_I2C_H_
+#ifndef _I2C_DRV_H_
+#define _I2C_DRV_H_
 #include <linux/i2c.h>
 
-#define NFC_I2C_DEVICE_NAME "pn553"      /* i2c device node name*/
-#define NFC_I2C_DEVICE_ID   "nxp,pn544"  /*kept same as dts*/
+/*kept same as dts */
+#define NFC_I2C_DRV_STR     "nxp,pn544"
+#define NFC_I2C_DEV_ID      "pn553"
 
 //Interface specific parameters
 typedef struct i2c_dev {
-    struct i2c_client   *client;
+    struct i2c_client *client;
     /*IRQ parameters */
-    bool                irq_enabled;
-    spinlock_t          irq_enabled_lock;
+    bool irq_enabled;
+    spinlock_t irq_enabled_lock;
     /* NFC_IRQ wake-up state */
-    bool                irq_wake_up;
-    unsigned int        count_irq;
+    bool irq_wake_up;
 } i2c_dev_t;
+
 long nfc_i2c_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg);
-int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id);
+int nfc_i2c_dev_probe(struct i2c_client *client,
+                      const struct i2c_device_id *id);
 int nfc_i2c_dev_remove(struct i2c_client *client);
 int nfc_i2c_dev_suspend(struct device *device);
 int nfc_i2c_dev_resume(struct device *device);
 void i2c_disable_irq(i2c_dev_t *i2c_dev);
 void i2c_enable_irq(i2c_dev_t *i2c_dev);
-int i2c_write(i2c_dev_t *i2c_dev, char *buf, size_t count);
+int i2c_write(i2c_dev_t *i2c_dev, char *buf, size_t count, int max_retry_cnt);
 int i2c_read(i2c_dev_t *i2c_dev, char *buf, size_t count);
-#endif //_NFC_I2C_H_
+ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t count,
+                         loff_t *offset);
+#endif //_I2C_DRV_H_

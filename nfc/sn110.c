@@ -1,5 +1,5 @@
 /******************************************************************************
- *  Copyright (C) 2019 NXP
+ *  Copyright (C) 2019-2020 NXP
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
  *
  ******************************************************************************/
 #include <linux/delay.h>
-#include "nfc_drv.h"
+#include "common.h"
 #include "sn110.h"
 
 int sn110_i2c_probe(nfc_dev_t *nfc_dev)
@@ -26,13 +26,13 @@ int sn110_i2c_probe(nfc_dev_t *nfc_dev)
     usleep_range(5000, 5100);
     gpio_set_value(nfc_dev->gpio.ven, 1);
     usleep_range(5000, 5100);
-    nfc_dev->ven_logic = VEN_ALWAYS_ENABLED;
+    nfc_dev->ven_policy = VEN_ALWAYS_ENABLED;
     return 0;
 }
 
 int sn110_i3c_probe(nfc_dev_t *nfc_dev)
 {
     pr_debug("%s: enter\n", __func__);
-    nfc_dev->ven_logic = VEN_ALWAYS_ENABLED;
+    nfc_dev->ven_policy = VEN_ALWAYS_ENABLED;
     return 0;
 }

@@ -1,5 +1,5 @@
 /******************************************************************************
- *  Copyright (C) 2019 NXP
+ *  Copyright (C) 2019-2020 NXP
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,43 +16,55 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  ******************************************************************************/
-#ifndef _NFC_I3C_H_
-#define _NFC_I3C_H_
+#ifndef _I3C_DRV_H_
+#define _I3C_DRV_H_
 
 #include <linux/i3c/master.h>
 #include <linux/i3c/device.h>
-#include "nfc_drv.h"
 
-#define NFC_I3C_DEVICE_NAME     "pn553"
-#define NFC_I3C_DEVICE_ID       "nxp,pn544_i3c" /*to to kept same as dt*/
-/*initialy fixed for sn110, should be intialized by kconfig for other chips*/
+//to to kept same as dt
+#define NFC_I3C_DRV_STR         "nxp,pn544_i3c"
 #define NFC_I3C_MANU_ID         (0x011B)
 #define NFC_I3C_PART_ID         (0)
 
-#define NFC_I3C_READ            (1)         /* Byte indicating I3C Read*/
-#define NFC_I3C_WRITE           (0)         /* Byte indicating I3C Write*/
-#define NUM_NFC_IBI_SLOT        2           /* Maximum no of IBI slot*/
-#define MAX_IBI_PAYLOAD_LEN     0           /* Maximum  IBI payload length*/
-#define FW_CRC_LEN              2           /* CRC len to be read */
-#define FW_HDR_LEN              2           /* FW DNLD HDR length */
+//Byte indicating I3C Read
+#define NFC_I3C_READ            1
 
-#define I3C_WORKQUEUE_NAME      "i3c_workq" /* I3C WorkQueue name*/
-#define MAX_IRQ_WAIT_TIME        (90)    //in ms
-#define MAX_BUFFER_SIZE            (320)
-#define WAKEUP_SRC_TIMEOUT        (2000)
+//Byte indicating I3C Write
+#define NFC_I3C_WRITE           0
 
+// Maximum no of IBI slot
+#define NUM_NFC_IBI_SLOT        1
+
+// Maximum  IBI payload length
+#define MAX_IBI_PAYLOAD_LEN     0
+
+// CRC len to be read
+#define FW_CRC_LEN              2
+
+// FW DNLD HDR length
+#define FW_HDR_LEN              2
+
+// Time to wait before retrying I3C writes, in micro seconds
+#define RETRY_WAIT_TIME_USEC    (2000)
+
+// Retry count for enable/disable IBI CCC
+#define RETRY_COUNT_IBI         (3)
+
+// I3C WorkQueue name
+#define I3C_WORKQUEUE_NAME      "i3c_workq"
 /**
  * struct nci_buf - NCI buffer used to store and retrieve read data from device.
  * @read_offset: The offset pointing to data available to read in nci buf.
  * @write_offset: The offset pointing to free buf available to write.
  * @total_size: Size of nci buf.
- * @kbuf: allocated nci buf.This will usually be one page size allocated during probe.
+ * @kbuf: allocated nci buf.
  */
 struct nci_buf {
     unsigned int read_offset;
     unsigned int write_offset;
     size_t total_size;
-    char* kbuf;
+    char *kbuf;
 };
 
 /**
@@ -60,39 +72,38 @@ struct nci_buf {
  * @i3c_device        Structure to represent I3C device.
  * @wq:               NCI workqueue for handling IBI request.
  * @work:             Work added to workqueue to read data from IBI handler.
- * @buf               Driver buf store read data from device.Read system call will
+ * @buf               Driver buf store read data from device.Read call will
  *                    fetch from this buffer.
  * @nci_buf_mutex:    mutex to protect NCI buf retrieve/store .
  * @read_cplt:        Completion to wait for read data to be available.
  * @read_kbuf_len:    Temp buf len to hold I3C data.
  * @read_kbuf:        Temp buf to hold I3C data.
- * @read_hdr          Read mode NCI / FW download.
- * @ibi_enabled:      IBI from SN110 device is enabled or not.
- * @count_ibi:        Number of IBI received.
- * @pm_state:         State for suspend/resume to defer the workqueue task
- * @ibi_enabled_lock  spin lock acquired in ibi handler.
+ * @read_hdr          Header size for reads.
+ * @ibi_enabled:      IBI enabled or not.
+ * @pm_state:         PM state of NFC I3C device.
  */
 typedef struct i3c_dev {
-    struct i3c_device   *device;
-    /*IBI handling parameters */
+    struct i3c_device *device;
     struct workqueue_struct *wq;
-    struct work_struct  work;
-    struct nci_buf      buf;
-    struct mutex        nci_buf_mutex;
-    struct completion   read_cplt;
-    size_t              read_kbuf_len;
-    char                *read_kbuf;
-    unsigned char       read_hdr;
-    /*IBI parameters */
-    bool                ibi_enabled;
-    atomic_t            count_ibi;
-    atomic_t            pm_state;
-    spinlock_t          ibi_enabled_lock;
+    struct work_struct work;
+    struct nci_buf buf;
+    struct mutex nci_buf_mutex;
+    struct completion read_cplt;
+    size_t read_kbuf_len;
+    char *read_kbuf;
+    unsigned char read_hdr;
+    bool ibi_enabled;
+    atomic_t pm_state;
+
 } i3c_dev_t;
+
 int nfc_i3c_dev_probe(struct i3c_device *device);
 int nfc_i3c_dev_remove(struct i3c_device *device);
 int nfc_i3c_dev_suspend(struct device *device);
 int nfc_i3c_dev_resume(struct device *device);
-int i3c_enable_ibi(i3c_dev_t* i3c_dev);
-int i3c_disable_ibi(i3c_dev_t* i3c_dev);
-#endif //_NFC_I3C_H_
+int i3c_enable_ibi(i3c_dev_t *i3c_dev);
+int i3c_disable_ibi(i3c_dev_t *i3c_dev);
+ssize_t i3c_write(i3c_dev_t *i3c_dev, const char *buf, const size_t count,
+                  int max_retry_cnt);
+ssize_t i3c_read(i3c_dev_t *, char *buf, size_t count);
+#endif //_I3C_DRV_H_

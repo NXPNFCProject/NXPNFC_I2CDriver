@@ -20,11 +20,9 @@
 #ifndef _NFC_COLD_RESET_H_
 #define _NFC_COLD_RESET_H_
 
-
 typedef enum ese_cold_reset_origin {
     ESE_COLD_RESET_SOURCE_SPI,
     ESE_COLD_RESET_SOURCE_UWB,
-}ese_cold_reset_origin_t;
-
+} ese_cold_reset_origin_t;
 
 #endif /* NFC_COLD_RESET_H_ */
