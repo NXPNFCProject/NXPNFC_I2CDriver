@@ -132,6 +132,7 @@ static int send_nci_transceive(uint8_t *prop_cmd, size_t prop_cmd_size) {
     int ret = 0;
     unsigned int loop=0x03;
     struct file filp;
+    int retry = 1;
 
     pr_info("%s: Enter", __func__);
 
@@ -156,21 +157,26 @@ static int send_nci_transceive(uint8_t *prop_cmd, size_t prop_cmd_size) {
       mutex_unlock(&nci_send_cmd_mutex);
       return -EREMOTEIO;
     }
-    pr_info("%s: NxpNciX: %d > %02X%02X%02X \n", __func__, ret,prop_cmd[0],
-            prop_cmd[1],prop_cmd[2]);
     ret = 0x00;
-    if(pn544_dev->state_flags & P544_FLAG_NFC_ON)/* NFC_ON */ {
-      /* Read is pending from the NFC service which will complete the prop_cmd_resp_sema */
-      if(wait_for_completion_timeout(&prop_cmd_resp_sema,
-          msecs_to_jiffies(NCI_CMD_RSP_TIMEOUT)) == 0){
-        pr_err("%s: Timeout", __func__);
-        ret = prop_nci_rsp[3] = -EAGAIN; // Failure case
+
+    do {
+      if(pn544_dev->state_flags & P544_FLAG_NFC_ON)/* NFC_ON */ {
+        /* Read is pending from the NFC service which will complete the prop_cmd_resp_sema */
+        if(wait_for_completion_timeout(&prop_cmd_resp_sema,
+            msecs_to_jiffies(NCI_CMD_RSP_TIMEOUT)) == 0){
+          pr_err("%s: Timeout", __func__);
+          ret = prop_nci_rsp[3] = -EAGAIN; // Failure case
+        }
+      } else { /* NFC_OFF */
+        /* call the pn544_dev_read() */
+        filp.f_flags &= ~O_NONBLOCK;
+        ret = pn544_dev_read(&filp, NULL,3, 0);
+        if(!ret)
+          break;
+        usleep_range(2000, 3000);
       }
-    } else { /* NFC_OFF */
-      /* call the pn544_dev_read() */
-      filp.f_flags &= ~O_NONBLOCK;
-      ret = pn544_dev_read(&filp, NULL,3, 0);
-    }
+    } while((retry-- >= 0) && ret == -ERESTARTSYS);
+
     mutex_unlock(&nci_send_cmd_mutex);
     if(0x00 == ret && prop_nci_rsp[3])
         ret = -1 * prop_nci_rsp[3];
@@ -201,7 +207,7 @@ static int send_nci_transceive(uint8_t *prop_cmd, size_t prop_cmd_size) {
  *                      < 2. mod_timer(): invalid arg is passed>
  *    -EREMOTEIO(-121): < Reset cmd write failure over I2C >
  *    -ECANCELED(-125): < FW DWNLD is going on so driver canceled operation >
-
+ *    -ERESTARTSYS(-512): < Userspace process is restarted during read operation >
  *****************************************************************************/
 int do_reset_protection(bool type) {
     int ret = 0;
@@ -219,6 +225,8 @@ int do_reset_protection(bool type) {
         return ret;
       }
     }
+    pr_info("%s: NxpNciX: %d > %02X%02X%02X%02X \n", __func__, ret,prop_cmd[0],
+             prop_cmd[1],prop_cmd[2],prop_cmd[3]);
 
     ret = send_nci_transceive(prop_cmd, sizeof(prop_cmd));
     if(ret) {
@@ -243,7 +251,7 @@ EXPORT_SYMBOL(do_reset_protection);
  *
  * Returns     :
  *     0           :    OK             < Success case >
- *    -EPERM(-1)   :    REJECTED       < NFCC rejects the cold reset cmd>
+ *    -EPERM(-1)   :    REJECTED       < Guard timer running>
  *    -3           :    FAILED         < NFCC responds to cold reset cmd>
  *    -EIO(-5)     :    SYNTAX_ERROR   < NFCC cmd framing is wrong >
  *    -6           :    SEMANTIC_ERROR < NFCC rsp to cold reset cmd >
@@ -251,11 +259,12 @@ EXPORT_SYMBOL(do_reset_protection);
  *    -EAGAIN(-11) :    < 1. mod_timer(): temp error during kernel alloc >
  *                      < 2. No rsp received from NFCC for cold reset cmd >
  *    -ENOMEM(-12) :    < mod_timer(): failed to allocate memory >
+ *    -EBUSY(-16)  :    < eSE busy, in updater mode>
  *    -EINVAL(-22) :    < 1. cold rst req is received from unknown source >
  *                      < 2. mod_timer(): invalid arg is passed>
  *    -EREMOTEIO(-121): < Reset cmd write failure over I2C >
  *    -ECANCELED(-125): < FW DWNLD is going on so driver canceled operation >
- *
+ *    -ERESTARTSYS(-512): < Userspace process is restarted during read operation >
  *****************************************************************************/
 int ese_cold_reset(ese_cold_reset_origin_t src)
 {
@@ -283,6 +292,8 @@ int ese_cold_reset(ese_cold_reset_origin_t src)
       }
       pn544_dev->state_flags |= src << ESE_COLD_RESET_ORIGIN_FLAGS_POS;
       init_completion(&ese_cold_reset_sema);
+      pr_info("%s: NxpNciX: %d > %02X%02X%02X \n", __func__, ret,ese_cld_reset[0],
+              ese_cld_reset[1],ese_cld_reset[2]);
       ret = send_nci_transceive(ese_cld_reset, sizeof(ese_cld_reset));
       if(ret) {
         pn544_dev->state_flags &= ~(MASK_ESE_COLD_RESET | MASK_ESE_COLD_RESET_GUARD_TIMER);
@@ -294,6 +305,18 @@ int ese_cold_reset(ese_cold_reset_origin_t src)
           msecs_to_jiffies(ESE_COLD_RESET_REBOOT_GUARD_TIME)) == 0){
         pr_info("%s: guard Timeout", __func__);
       }
+    } else {
+        if(IS_RESET_PROTECTION_ENABLED(pn544_dev->state_flags)) {
+          pr_err("%s :  Not allowed resource busy \n", __func__);
+          ret = -EBUSY;
+        }
+        else if(IS_COLD_RESET_REQ_IN_PROGRESS(pn544_dev->state_flags)) {
+          pr_err("%s :  Operation not permitted \n", __func__);
+          ret = -EPERM;
+        }
+        else {
+          /*No Action required*/
+        }
     }
     pn544_dev->state_flags &= ~(src << ESE_COLD_RESET_ORIGIN_FLAGS_POS);
     mutex_unlock(&ese_cold_reset_sync_mutex);

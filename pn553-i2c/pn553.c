@@ -482,6 +482,7 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                 if (pn544_dev->firm_gpio) {
                     p61_update_access_state(pn544_dev, P61_STATE_DWNLD, true);
                     gpio_set_value(pn544_dev->firm_gpio, 1);
+                    pn544_dev->state_flags |= (P544_FLAG_FW_DNLD);
                 }
 
                 msleep(10);
@@ -500,6 +501,7 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
                     p61_update_access_state(pn544_dev, P61_STATE_DWNLD, false);
                 }
                 gpio_set_value(pn544_dev->firm_gpio, 0);
+                pn544_dev->state_flags &= ~(P544_FLAG_FW_DNLD);
             }
 
             pn544_dev->nfc_ven_enabled = true;
