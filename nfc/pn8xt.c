@@ -45,7 +45,7 @@
 #include <linux/miscdevice.h>
 #include <linux/i2c.h>
 #include <linux/sched.h>
-#include <linux/signal.h>
+#include <linux/sched/signal.h>
 #include <linux/workqueue.h>
 #include <linux/timer.h>
 
@@ -76,7 +76,6 @@ static pn8xt_access_st_t *pn8xt_get_state(struct pn8xt_dev *pn8xt_dev)
 {
     return &pn8xt_dev->cur_state;
 }
-
 static void pn8xt_update_state(struct pn8xt_dev *pn8xt_dev, pn8xt_access_st_t state, bool set)
 {
     if (state) {
@@ -591,9 +590,10 @@ static int set_wired_access(struct nfc_dev *nfc_dev, unsigned long arg)
     return 0;
 }
 
-static void secure_timer_callback(unsigned long data)
+
+static void secure_timer_callback(struct timer_list *t)
 {
-    struct pn8xt_dev *pn8xt_dev = (struct pn8xt_dev *)data;
+    struct pn8xt_dev *pn8xt_dev = from_timer(pn8xt_dev, t, secure_timer);;
     /* Flush and push the timer callback event to the bottom half(work queue)
     to be executed later, at a safer time */
     flush_workqueue(pn8xt_dev->pSecureTimerCbWq);
@@ -613,9 +613,7 @@ static long start_seccure_timer(struct pn8xt_dev *pn8xt_dev, unsigned long timer
     }
     /* Start the timer if timer value is non-zero */
     if(timer_value) {
-        init_timer(&pn8xt_dev->secure_timer);
-        setup_timer(&pn8xt_dev->secure_timer, secure_timer_callback, (unsigned long)pn8xt_dev);
-
+        timer_setup(&pn8xt_dev->secure_timer, secure_timer_callback, 0);
         pr_debug("%s:timeout %lums (%lu)\n", __func__, timer_value, jiffies);
         ret = mod_timer(&pn8xt_dev->secure_timer, jiffies + msecs_to_jiffies(timer_value));
         if (ret)
