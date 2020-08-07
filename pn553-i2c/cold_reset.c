@@ -145,7 +145,7 @@ void rcv_prop_resp_status(const char * const buf)
 static int send_nci_transceive(uint8_t *prop_cmd, size_t prop_cmd_size) {
     int ret = 0;
     unsigned int loop=0x03;
-    struct file filp;
+    struct file filp = {NULL};
     int retry = 1;
 
     pr_info("%s: Enter", __func__);
@@ -187,7 +187,7 @@ static int send_nci_transceive(uint8_t *prop_cmd, size_t prop_cmd_size) {
         ret = pn544_dev_read(&filp, NULL,3, 0);
         if(!ret)
           break;
-        usleep_range(2000, 3000);
+        usleep_range(3500, 4000);
       }
     } while((retry-- >= 0) && ret == -ERESTARTSYS);
 
