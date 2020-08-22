@@ -73,7 +73,7 @@
 
 #define DRAGON_NFC 1
 #define SIG_NFC 44
-#define MAX_BUFFER_SIZE 512
+#define MAX_BUFFER_SIZE 554
 #define MAX_SECURE_SESSIONS 1
 
 /* This macro evaluates to 1 if the cold reset is requested by driver(SPI/UWB). */

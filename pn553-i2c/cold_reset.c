@@ -23,6 +23,7 @@
 #include <linux/jiffies.h>
 #include <linux/delay.h>
 #include <linux/spinlock.h>
+#include <linux/version.h>
 #include "cold_reset.h"
 #include "pn553.h"
 
@@ -53,15 +54,24 @@ static struct timer_list ese_cold_reset_timer;
 static struct completion prop_cmd_resp_sema;
 static struct completion ese_cold_reset_sema;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
 static void ese_cold_reset_gaurd_timer_callback(unsigned long data);
+#else
+static void ese_cold_reset_gaurd_timer_callback(struct timer_list *unused);
+#endif
+
 static long start_ese_cold_reset_guard_timer(void);
 
 extern struct pn544_dev * get_nfcc_dev_data(void);
 
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
 static void ese_cold_reset_gaurd_timer_callback(unsigned long data)
 {
     (void)data;
+#else
+static void ese_cold_reset_gaurd_timer_callback(struct timer_list *unused)
+{
+#endif
     pr_info("%s: Enter\n",__func__);
     pn544_dev->state_flags &= ~MASK_ESE_COLD_RESET_GUARD_TIMER;
     return;
@@ -78,8 +88,12 @@ static long start_ese_cold_reset_guard_timer(void)
         del_timer(&ese_cold_reset_timer);
     }
     pn544_dev->state_flags |= MASK_ESE_COLD_RESET_GUARD_TIMER;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
     init_timer(&ese_cold_reset_timer);
     setup_timer( &ese_cold_reset_timer, ese_cold_reset_gaurd_timer_callback, 0 );
+#else
+    timer_setup(&ese_cold_reset_timer, ese_cold_reset_gaurd_timer_callback, 0);
+#endif
     ret = mod_timer(&ese_cold_reset_timer, jiffies + msecs_to_jiffies(ESE_COLD_RESET_GUARD_TIME));
     if (ret)
       printk( KERN_INFO "%s: Error in mod_timer\n",__func__);
@@ -131,7 +145,7 @@ void rcv_prop_resp_status(const char * const buf)
 static int send_nci_transceive(uint8_t *prop_cmd, size_t prop_cmd_size) {
     int ret = 0;
     unsigned int loop=0x03;
-    struct file filp;
+    struct file filp = {NULL};
     int retry = 1;
 
     pr_info("%s: Enter", __func__);
@@ -173,7 +187,7 @@ static int send_nci_transceive(uint8_t *prop_cmd, size_t prop_cmd_size) {
         ret = pn544_dev_read(&filp, NULL,3, 0);
         if(!ret)
           break;
-        usleep_range(2000, 3000);
+        usleep_range(3500, 4000);
       }
     } while((retry-- >= 0) && ret == -ERESTARTSYS);
 
