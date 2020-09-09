@@ -334,7 +334,9 @@ static long pn8xt_ese_pwr(struct nfc_dev *nfc_dev, unsigned int cmd, unsigned lo
                         if(*cur_state & ST_SPI_FAILED) {
                             pn8xt_update_state(pn8xt_dev, ST_SPI_FAILED, false);
                         }
-                        pn8xt_update_state(pn8xt_dev, ST_SPI, false);
+                        if(*cur_state & ST_SPI) {
+                            pn8xt_update_state(pn8xt_dev, ST_SPI, false);
+                        }
                         if(isSignalTriggerReqd)
                             trigger_onoff(pn8xt_dev, ST_SPI_SVDD_SY_END);
                     }
@@ -362,7 +364,9 @@ static long pn8xt_ese_pwr(struct nfc_dev *nfc_dev, unsigned int cmd, unsigned lo
                         if(*cur_state & ST_SPI_FAILED) {
                             pn8xt_update_state(pn8xt_dev, ST_SPI_FAILED, false);
                         }
-                        pn8xt_update_state(pn8xt_dev, ST_SPI, false);
+                        if(*cur_state & ST_SPI) {
+                            pn8xt_update_state(pn8xt_dev, ST_SPI, false);
+                        }
                         if(isSignalTriggerReqd)
                             trigger_onoff(pn8xt_dev, ST_SPI_SVDD_SY_END);
                         pr_debug("%s:PN80T legacy ese_pwr_gpio off", __func__);
