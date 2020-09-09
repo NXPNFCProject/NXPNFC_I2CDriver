@@ -43,13 +43,17 @@
 #define IS_COLD_RESET_ALLOWED(flags, src)  (!IS_COLD_RESET_REQ_IN_PROGRESS(flags)    \
                 && (!IS_RESET_PROTECTION_ENABLED(flags) || src == ESE_COLD_RESET_SOURCE_SPI))
 
+#define IS_COLD_RESET_ALLOWED_NFC(flags, src)  ((IS_RESET_PROTECTION_ENABLED(flags) \
+      && src == ESE_COLD_RESET_SOURCE_NFC))
+
 static struct pn544_dev *pn544_dev;
 struct mutex        ese_cold_reset_sync_mutex;
 struct mutex        nci_send_cmd_mutex;
+bool is_force_reset_allowed = false;
 
 extern ssize_t pn544_dev_read(struct file *filp, char __user *buf,
         size_t count, loff_t *offset);
-
+int do_reset_protection(bool type);
 static int8_t prop_nci_rsp[NCI_PROP_RST_RSP_SIZE];
 static struct timer_list ese_cold_reset_timer;
 static struct completion prop_cmd_resp_sema;
@@ -99,6 +103,11 @@ static long start_ese_cold_reset_guard_timer(void)
       printk( KERN_INFO "%s: Error in mod_timer\n",__func__);
     return ret;
 }
+
+void set_force_reset(bool value) {
+    is_force_reset_allowed = value;
+}
+
 void ese_reset_resource_init(void) {
     mutex_init(&ese_cold_reset_sync_mutex);
     mutex_init(&nci_send_cmd_mutex);
@@ -145,7 +154,7 @@ void rcv_prop_resp_status(const char * const buf)
 static int send_nci_transceive(uint8_t *prop_cmd, size_t prop_cmd_size) {
     int ret = 0;
     unsigned int loop=0x03;
-    struct file filp = {NULL};
+    struct file filp ={{{NULL}}};
     int retry = 1;
 
     pr_info("%s: Enter", __func__);
@@ -283,6 +292,7 @@ EXPORT_SYMBOL(do_reset_protection);
 int ese_cold_reset(ese_cold_reset_origin_t src)
 {
     int ret = 0;
+    bool status = false;
     uint8_t ese_cld_reset[] = {0x2F, 0x1E, 0x00};
 
     pr_info("%s: Enter origin:%d", __func__, src);
@@ -298,7 +308,11 @@ int ese_cold_reset(ese_cold_reset_origin_t src)
     }
     pn544_dev = get_nfcc_dev_data();
     mutex_lock(&ese_cold_reset_sync_mutex);
-    if(IS_COLD_RESET_ALLOWED(pn544_dev->state_flags, src)) {
+    if(is_force_reset_allowed)
+      status = IS_COLD_RESET_ALLOWED_NFC(pn544_dev->state_flags, src);
+    else
+      status = IS_COLD_RESET_ALLOWED(pn544_dev->state_flags, src);
+    if(status) {
       ret = start_ese_cold_reset_guard_timer();
       if(ret) {
         mutex_unlock(&ese_cold_reset_sync_mutex);

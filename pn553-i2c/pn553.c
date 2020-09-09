@@ -118,6 +118,9 @@ extern void rcv_prop_resp_status(const char * const buf);
 extern long ese_cold_reset(ese_cold_reset_origin_t src);
 extern void ese_reset_resource_init(void);
 extern void ese_reset_resource_destroy(void);
+extern void set_force_reset(bool value);
+extern int do_reset_protection(bool enable);
+
 #if HWINFO
 static void check_hw_info(void);
 #endif
@@ -141,6 +144,7 @@ static void pn544_disable_irq(struct pn544_dev *pn544_dev)
 
 static int pn544_dev_release(struct inode *inode, struct file *filp) {
     pn544_dev->state_flags &= ~(P544_FLAG_NFC_VEN_RESET|P544_FLAG_NFC_ON|P544_FLAG_FW_DNLD);
+    set_force_reset(false);
     if (pn544_dev->firm_gpio)
         gpio_set_value(pn544_dev->firm_gpio, 0);
     pr_info(KERN_ALERT "Exit %s: NFC driver release  nfc hal  \n", __func__);
@@ -352,7 +356,7 @@ static int signal_handler(p61_access_state_t state, long nfc_pid)
         if(task)
         {
             pr_info("%s.\n", task->comm);
-            sigret = force_sig_info(SIG_NFC, &sinfo, task);
+            sigret = send_sig_info(SIG_NFC, &sinfo, task);
             if(sigret < 0){
                 pr_info("send_sig_info failed..... sigret %d.\n", sigret);
                 ret = -1;
@@ -836,8 +840,15 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
             msleep(50);
             pr_info("%s ISO RESET from SPI DONE\n", __func__);
 #endif
-        }
-        else {
+        } else if(arg == 7){
+          long ret;
+          set_force_reset(true);
+          ret = do_reset_protection(true);
+        } else if(arg == 8){
+          long ret;
+          set_force_reset(false);
+          ret = do_reset_protection(false);
+        } else {
             pr_info("%s bad ese pwr arg %lu\n", __func__, arg);
             p61_access_unlock(pn544_dev);
             return -EBADRQC; /* Invalid request code */
@@ -1607,5 +1618,6 @@ static void __exit pn544_dev_exit(void)
 module_exit(pn544_dev_exit);
 
 MODULE_AUTHOR("Sylvain Fonteneau");
+MODULE_ALIAS("of:nxp,pn544");
 MODULE_DESCRIPTION("NFC PN544 driver");
 MODULE_LICENSE("GPL");
