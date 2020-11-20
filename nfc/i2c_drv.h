@@ -1,5 +1,5 @@
 /******************************************************************************
- *  Copyright (C) 2020 NXP
+ *  Copyright (C) 2019-2020 NXP
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,24 +16,30 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  ******************************************************************************/
-#ifndef _NFC_COMMON_H_
-#define _NFC_COMMON_H_
+#ifndef _I2C_DRV_H_
+#define _I2C_DRV_H_
+#include <linux/i2c.h>
 
-#define MSG_NFCC_RSP              0x40
-#define MSG_PROP_GID              0x0F
-#define ESE_CLD_RST_OID           0x1E
-#define RST_PROTECTION_CMD_INDEX  0x03
+/*kept same as dts */
+#define NFC_I2C_DRV_STR     "nxp,pn544"
+#define NFC_I2C_DEV_ID      "pn553"
 
-#define RST_PROTECTION_OID        0x1F
-#define RST_PROTECTION_ENABLED    0x08
+//Interface specific parameters
+typedef struct i2c_dev {
+	struct i2c_client *client;
+	/*IRQ parameters */
+	bool irq_enabled;
+	spinlock_t irq_enabled_lock;
+	/* NFC_IRQ wake-up state */
+	bool irq_wake_up;
+} i2c_dev_t;
 
-typedef enum ese_cold_reset_origin {
-    ESE_COLD_RESET_NOT_REQUESTED = 0x00,
-    ESE_COLD_RESET_SOURCE_NFC = 0x01,
-    ESE_COLD_RESET_SOURCE_SPI = 0x02,
-    ESE_COLD_RESET_SOURCE_UWB = 0x04,
-}ese_cold_reset_origin_t;
-
-void ese_reset_resource_init(void);
-void ese_reset_resource_destroy(void);
-#endif /* _NFC_COMMON_H_ */
+long nfc_i2c_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg);
+int nfc_i2c_dev_probe(struct i2c_client *client,
+		      const struct i2c_device_id *id);
+int nfc_i2c_dev_remove(struct i2c_client *client);
+int nfc_i2c_dev_suspend(struct device *device);
+int nfc_i2c_dev_resume(struct device *device);
+ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t count,
+			 loff_t * offset);
+#endif //_I2C_DRV_H_
