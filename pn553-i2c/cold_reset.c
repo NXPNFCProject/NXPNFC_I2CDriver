@@ -194,11 +194,9 @@ static int send_nci_transceive(uint8_t *prop_cmd, size_t prop_cmd_size) {
         /* call the pn544_dev_read() */
         filp.f_flags &= ~O_NONBLOCK;
         ret = pn544_dev_read(&filp, NULL,3, 0);
-        if(!ret)
-          break;
         usleep_range(3500, 4000);
       }
-    } while((retry-- >= 0) && ret == -ERESTARTSYS);
+    } while((retry-- >= 0) && (ret == -ERESTARTSYS || ret == -EFAULT));
 
     mutex_unlock(&nci_send_cmd_mutex);
     if(0x00 == ret && prop_nci_rsp[3])
