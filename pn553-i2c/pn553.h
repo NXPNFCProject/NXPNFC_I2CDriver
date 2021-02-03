@@ -17,10 +17,8 @@
  */
 /******************************************************************************
  *
- *  The original Work has been changed by NXP Semiconductors.
+ * Copyright 2013-2020 NXP
  *
- *  Copyright (C) 2013-2020 NXP Semiconductors
- *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -108,6 +106,10 @@
 
 #define P544_SECURE_TIMER_SESSION _IOW(PN544_MAGIC, 0x0B, long)
 
+/* NFC HAL can call this ioctl to get the current IRQ state */
+#define PN544_GET_IRQ_STATE    _IOW(PN544_MAGIC, 0x0C, long)
+
+
 #define MAX_ESE_ACCESS_TIME_OUT_MS 200 /*100 milliseconds*/
 
 /*
@@ -163,6 +165,8 @@ typedef enum p61_access_state{
     P61_STATE_SPI_PRIO_END = 0x2000, /*End of p61 access by SPI on priority*/
     P61_STATE_SPI_END = 0x4000,
     P61_STATE_JCP_DWNLD = 0x8000,/* JCOP downlad in progress */
+    P61_STATE_JCP_DWNLD_INIT = 0x8010, /* jcop dwonload init state*/
+    P61_STATE_JCP_DWP_DWNLD_COMPLETE = 0x8080, /* jcop download complete */
     P61_STATE_SECURE_MODE = 0x100000, /* secure mode state*/
     P61_STATE_SPI_SVDD_SYNC_START = 0x0001, /*ESE_VDD Low req by SPI*/
     P61_STATE_SPI_SVDD_SYNC_END = 0x0002, /*ESE_VDD is Low by SPI*/

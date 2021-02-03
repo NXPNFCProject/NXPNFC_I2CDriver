@@ -18,10 +18,8 @@
  */
 /******************************************************************************
  *
- *  The original Work has been changed by NXP Semiconductors.
+ * Copyright 2013-2020 NXP
  *
- *  Copyright (C) 2013-2020 NXP Semiconductors
- *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -976,6 +974,14 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
        secure_timer_operation(pn544_dev, arg);
     }
     break;
+    case PN544_GET_IRQ_STATE:
+    {
+        int state = 0;
+        state = gpio_get_value(pn544_dev->irq_gpio);
+        p61_access_unlock(pn544_dev);
+        return state;
+    }
+    break;
     default:
         pr_err("%s bad ioctl %u\n", __func__, cmd);
         p61_access_unlock(pn544_dev);
@@ -1097,7 +1103,7 @@ static long set_jcop_download_state(unsigned long arg)
             if(pn544_dev->nfc_service_pid)
             {
                 pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
-                signal_handler(JCP_DWNLD_INIT, pn544_dev->nfc_service_pid);
+                signal_handler(P61_STATE_JCP_DWNLD_INIT, pn544_dev->nfc_service_pid);
             }
             else
             {
@@ -1126,7 +1132,7 @@ static long set_jcop_download_state(unsigned long arg)
         {
             if(pn544_dev->nfc_service_pid)
             {
-                signal_handler(JCP_DWP_DWNLD_COMPLETE, pn544_dev->nfc_service_pid);
+                signal_handler(P61_STATE_JCP_DWP_DWNLD_COMPLETE, pn544_dev->nfc_service_pid);
             }
             p61_update_access_state(pn544_dev, P61_STATE_JCP_DWNLD, false);
         }
@@ -1404,10 +1410,10 @@ static int pn544_probe(struct i2c_client *client,
     ese_reset_resource_destroy();
     mutex_destroy(&pn544_dev->read_mutex);
     mutex_destroy(&pn544_dev->p61_state_mutex);
-    kfree(pn544_dev);
     err_exit:
     if (pn544_dev->firm_gpio)
         gpio_free(platform_data->firm_gpio);
+    kfree(pn544_dev);
     err_firm:
     gpio_free(platform_data->ese_pwr_gpio);
     err_ese_pwr:
