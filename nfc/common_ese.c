@@ -1,5 +1,5 @@
 /******************************************************************************
- *  Copyright (C) 2020 NXP
+ *  Copyright (C) 2020-2021 NXP
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -143,6 +143,7 @@ static int perform_cold_reset_protection(nfc_dev_t *nfc_dev, unsigned long arg)
 {
 	int ret = 0;
 	struct file filp;
+	uint8_t cld_rst_rsp[MAX_BUFFER_SIZE];
 	cold_reset_t *cold_reset = &nfc_dev->cold_reset;
 	bool nfc_dev_opened = false;
 
@@ -212,13 +213,12 @@ static int perform_cold_reset_protection(nfc_dev_t *nfc_dev, unsigned long arg)
 		} else {
 			/* Read data as NFC thread is not active */
 			filp.private_data = nfc_dev;
-#if IS_ENABLED(CONFIG_NXP_NFC_I2C)
-			if (nfc_dev->interface == PLATFORM_IF_I2C) {
-				filp.f_flags &= ~O_NONBLOCK;
-				ret = nfc_i2c_dev_read(&filp, NULL, 3, 0);
-				usleep_range(3500, 4000);
-			}
-#endif //IS_ENABLED(CONFIG_NXP_NFC_I2C)
+			filp.f_flags &= ~O_NONBLOCK;
+			ret = nfc_dev->nfc_read(nfc_dev, cld_rst_rsp, 3, NCI_CMD_RSP_TIMEOUT);
+			if (!ret)
+				break;
+			usleep_range(READ_RETRY_WAIT_TIME_USEC,
+					 READ_RETRY_WAIT_TIME_USEC + 500);
 		}
 	} while (ret == -ERESTARTSYS || ret == -EFAULT);
 
@@ -250,6 +250,7 @@ err:
 int nfc_ese_pwr(nfc_dev_t *nfc_dev, unsigned long arg)
 {
 	int ret = 0;
+	platform_gpio_t *nfc_gpio = &nfc_dev->configs.gpio;
 	if (arg == ESE_POWER_ON) {
 		/**
 		 * Let's store the NFC VEN pin state
@@ -258,7 +259,7 @@ int nfc_ese_pwr(nfc_dev_t *nfc_dev, unsigned long arg)
 		 * VEN state will remain HIGH if NFC is enabled otherwise
 		 * it will be set as LOW
 		 */
-		nfc_dev->nfc_ven_enabled = gpio_get_value(nfc_dev->gpio.ven);
+		nfc_dev->nfc_ven_enabled = gpio_get_value(nfc_gpio->ven);
 		if (!nfc_dev->nfc_ven_enabled) {
 			pr_debug("eSE HAL service setting ven HIGH\n");
 			gpio_set_ven(nfc_dev, 1);
@@ -274,7 +275,7 @@ int nfc_ese_pwr(nfc_dev_t *nfc_dev, unsigned long arg)
 		}
 	} else if (arg == ESE_POWER_STATE) {
 		// eSE get power state
-		ret = gpio_get_value(nfc_dev->gpio.ven);
+		ret = gpio_get_value(nfc_gpio->ven);
 	} else if (IS_CLD_RST_REQ(arg) || IS_RST_PROT_REQ(arg)) {
 		ret = perform_cold_reset_protection(nfc_dev, arg);
 	} else {

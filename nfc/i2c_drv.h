@@ -1,5 +1,5 @@
 /******************************************************************************
- *  Copyright (C) 2019-2020 NXP
+ *  Copyright (C) 2019-2021 NXP
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,6 +40,5 @@ int nfc_i2c_dev_probe(struct i2c_client *client,
 int nfc_i2c_dev_remove(struct i2c_client *client);
 int nfc_i2c_dev_suspend(struct device *device);
 int nfc_i2c_dev_resume(struct device *device);
-ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t count,
-			 loff_t * offset);
+
 #endif //_I2C_DRV_H_
