@@ -1,4 +1,5 @@
 /******************************************************************************
+ *  Copyright (C) 2015, The Linux Foundation. All rights reserved.
  *  Copyright (C) 2019-2021 NXP
  *   *
  * This program is free software; you can redistribute it and/or modify
@@ -25,14 +26,14 @@
 #define NFC_I2C_DEV_ID      "pn553"
 
 //Interface specific parameters
-typedef struct i2c_dev {
+struct i2c_dev {
 	struct i2c_client *client;
 	/*IRQ parameters */
 	bool irq_enabled;
 	spinlock_t irq_enabled_lock;
 	/* NFC_IRQ wake-up state */
 	bool irq_wake_up;
-} i2c_dev_t;
+};
 
 long nfc_i2c_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg);
 int nfc_i2c_dev_probe(struct i2c_client *client,

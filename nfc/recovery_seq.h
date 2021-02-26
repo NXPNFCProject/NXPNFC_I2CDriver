@@ -16,7 +16,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  ******************************************************************************/
-#if defined(RECOVERY_ENABLE)
+#if IS_ENABLED(CONFIG_NXP_NFC_RECOVERY)
 
 #ifndef __RECOVERY_SEQ_H_
 #define __RECOVERY_SEQ_H_
@@ -26,18 +26,14 @@
 #define MAX_FRAME_SIZE 0x22A /* support for 256(0x100) & 554(0x22A) frame size*/
 
 #define MAX_DATA_SIZE \
-  (MAX_FRAME_SIZE - FW_CRC_LEN - FW_HDR_LEN)
+	(MAX_FRAME_SIZE - FW_CRC_LEN - FW_HDR_LEN)
 
-#define FW_ROM_CODE_VER_OFFSET 4
-#define FW_MAJOR_VER_OFFSET 7
-#define RECOVERY_FW_SUPPORTED_ROM_VER 0x01
-#define RECOVERY_FW_SUPPORTED_MAJOR_VER 0x10
 #define RECOVERY_FW_MJ_VER_OFFSET 5
 
 #define DL_SET_HDR_FRAGBIT(n) \
-  ((n) | (1 << 10)) /* Header chunk bit set macro */
+	((n) | (1 << 10)) /* Header chunk bit set macro */
 #define DL_CLR_HDR_FRAGBIT(n) \
-  ((n) & ~(1U << 10)) /* Header chunk bit clear macro */
+	((n) & ~(1U << 10)) /* Header chunk bit clear macro */
 
 #define DL_FRAME_RESP_LEN 0x04
 #define DL_FRAME_RESP_LEN_OFFSET 1
@@ -52,29 +48,32 @@
 #define MSB_POS 8
 
 /* Data buffer for frame to write */
-typedef struct recovery_frame {
+struct recovery_frame {
 	uint32_t len;
-	uint8_t p_buffer[MAX_FRAME_SIZE];
-} recovery_frame_t;
+	uint8_t *p_buffer;
+};
 
 /* Contains Info about user buffer and last data frame */
-typedef struct recovery_info {
+struct recovery_info {
 	uint32_t currentReadOffset; /* current offset within the user buffer to read/write */
 	uint32_t remBytes;          /* Remaining bytes to write */
 	uint16_t wRemChunkBytes;   /* Remaining bytes within the chunked frame */
 	bool bFrameSegmented;  /* Indicates the current frame is segmented */
-} recovery_info_t;
+};
 
 /* indicates the error codes for nfc recovery module */
-typedef enum recovery_status {
+enum recovery_status {
 	STATUS_SUCCESS = 0x00,
 	STATUS_FAILED = 0x01,
-} recovery_status_t;
+};
+
+extern const uint32_t gphDnldNfc_DlSeqSz;     /* Recovery user buffer size */
+extern const uint8_t gphDnldNfc_DlSequence[]; /* Recovery user buffer */
 
 /** @brief   Function to recover the nfcc.
  *  @param   nfc_dev nfc driver object.
  *  @return status code of type recovery_status_t.
  */
-recovery_status_t do_recovery(nfc_dev_t *nfc_dev);
+enum recovery_status do_recovery(struct nfc_dev *nfc_dev);
 #endif// end  __RECOVERY_SEQ_H_
 #endif

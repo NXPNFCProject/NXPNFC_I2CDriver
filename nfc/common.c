@@ -1,4 +1,5 @@
 /******************************************************************************
+ *  Copyright (C) 2015, The Linux Foundation. All rights reserved.
  *  Copyright (C) 2019-2021 NXP
  *   *
  * This program is free software; you can redistribute it and/or modify
@@ -22,16 +23,13 @@
 #include <linux/version.h>
 #include "common.h"
 #include "common_ese.h"
-
-#if defined(RECOVERY_ENABLE)
 #include "recovery_seq.h"
-#endif
 
-int nfc_parse_dt(struct device *dev, platform_configs_t *nfc_configs,
+int nfc_parse_dt(struct device *dev, struct platform_configs *nfc_configs,
 		 uint8_t interface)
 {
 	struct device_node *np = dev->of_node;
-	platform_gpio_t *nfc_gpio = &nfc_configs->gpio;
+	struct platform_gpio *nfc_gpio = &nfc_configs->gpio;
 
 	if (!np) {
 		pr_err("nfc of_node NULL\n");
@@ -58,9 +56,8 @@ int nfc_parse_dt(struct device *dev, platform_configs_t *nfc_configs,
 	}
 
 	nfc_gpio->dwl_req = of_get_named_gpio(np, DTS_FWDN_GPIO_STR, 0);
-	if ((!gpio_is_valid(nfc_gpio->dwl_req))) {
+	if ((!gpio_is_valid(nfc_gpio->dwl_req)))
 		pr_warn("nfc dwl_req gpio invalid %d\n", nfc_gpio->dwl_req);
-	}
 
 	pr_info("%s: %d, %d, %d, %d\n", __func__, nfc_gpio->irq, nfc_gpio->ven,
 		nfc_gpio->dwl_req);
@@ -80,7 +77,8 @@ void set_valid_gpio(int gpio, int value)
 
 int get_valid_gpio(int gpio)
 {
-	int value = -1;
+	int value = -EINVAL;
+
 	if (gpio_is_valid(gpio)) {
 		value = gpio_get_value(gpio);
 		pr_debug("%s gpio %d value %d\n", __func__, gpio, value);
@@ -90,13 +88,14 @@ int get_valid_gpio(int gpio)
 
 void gpio_set_ven(struct nfc_dev *nfc_dev, int value)
 {
-	platform_gpio_t *nfc_gpio = &nfc_dev->configs.gpio;
+	struct platform_gpio *nfc_gpio = &nfc_dev->configs.gpio;
+
 	if (gpio_get_value(nfc_gpio->ven) != value) {
-		pr_debug("%s: gpio_set_ven %d\n", __func__, value);
+		pr_debug("%s: value %d\n", __func__, value);
 		/*reset on change in level from high to low */
-		if (value) {
-			common_ese_on_hard_reset(nfc_dev);
-		}
+		if (value)
+			ese_cold_reset_release(nfc_dev);
+
 		gpio_set_value(nfc_gpio->ven, value);
 		// hardware dependent delay
 		usleep_range(NFC_GPIO_SET_WAIT_TIME_USEC,
@@ -107,6 +106,7 @@ void gpio_set_ven(struct nfc_dev *nfc_dev, int value)
 int configure_gpio(unsigned int gpio, int flag)
 {
 	int ret;
+
 	pr_debug("%s: nfc gpio [%d] flag [%01x]\n", __func__, gpio, flag);
 	if (gpio_is_valid(gpio)) {
 		ret = gpio_request(gpio, "nfc_gpio");
@@ -146,21 +146,21 @@ int configure_gpio(unsigned int gpio, int flag)
 	return ret;
 }
 
-void gpio_free_all(nfc_dev_t *nfc_dev)
+void gpio_free_all(struct nfc_dev *nfc_dev)
 {
-	platform_gpio_t *nfc_gpio = &nfc_dev->configs.gpio;
-	if (gpio_is_valid(nfc_gpio->dwl_req)) {
+	struct platform_gpio *nfc_gpio = &nfc_dev->configs.gpio;
+
+	if (gpio_is_valid(nfc_gpio->dwl_req))
 		gpio_free(nfc_gpio->dwl_req);
-	}
-	if (gpio_is_valid(nfc_gpio->irq)) {
+
+	if (gpio_is_valid(nfc_gpio->irq))
 		gpio_free(nfc_gpio->irq);
-	}
-	if (gpio_is_valid(nfc_gpio->ven)) {
+
+	if (gpio_is_valid(nfc_gpio->ven))
 		gpio_free(nfc_gpio->ven);
-	}
 }
 
-void nfc_misc_unregister(nfc_dev_t *nfc_dev, int count)
+void nfc_misc_unregister(struct nfc_dev *nfc_dev, int count)
 {
 	pr_debug("%s: entry\n", __func__);
 	device_destroy(nfc_dev->nfc_class, nfc_dev->devno);
@@ -169,11 +169,12 @@ void nfc_misc_unregister(nfc_dev_t *nfc_dev, int count)
 	unregister_chrdev_region(nfc_dev->devno, count);
 }
 
-int nfc_misc_register(nfc_dev_t *nfc_dev,
+int nfc_misc_register(struct nfc_dev *nfc_dev,
 		      const struct file_operations *nfc_fops,
 		      int count, char *devname, char *classname)
 {
 	int ret = 0;
+
 	ret = alloc_chrdev_region(&nfc_dev->devno, 0, count, devname);
 	if (ret < 0) {
 		pr_err("%s: failed to alloc chrdev region ret %d\n", __func__, ret);
@@ -217,10 +218,11 @@ int nfc_misc_register(nfc_dev_t *nfc_dev,
  *
  * Return: -ENOIOCTLCMD if arg is not supported, 0 in any other case
  */
-static int nfc_ioctl_power_states(nfc_dev_t *nfc_dev, unsigned long arg)
+static int nfc_ioctl_power_states(struct nfc_dev *nfc_dev, unsigned long arg)
 {
 	int ret = 0;
-	platform_gpio_t *nfc_gpio = &nfc_dev->configs.gpio;
+	struct platform_gpio *nfc_gpio = &nfc_dev->configs.gpio;
+
 	if (arg == NFC_POWER_OFF) {
 		/*
 		 * We are attempting a hardware reset so let us disable
@@ -287,6 +289,7 @@ long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
 	struct nfc_dev *nfc_dev = pfile->private_data;
+
 	if (!nfc_dev)
 		return -ENODEV;
 
@@ -301,13 +304,6 @@ long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg)
 	case ESE_GET_PWR:
 		ret = nfc_ese_pwr(nfc_dev, ESE_POWER_STATE);
 		break;
-	case NFC_GET_PLATFORM_TYPE:
-		ret = nfc_dev->interface;
-		break;
-	case NFC_GET_NFC_STATE:
-		ret = nfc_dev->nfc_state;
-		pr_debug("nfc get state %d\n", ret);
-		break;
 	case NFC_GET_IRQ_STATE:
 		ret = gpio_get_value(nfc_dev->configs.gpio.irq);
 		break;
@@ -320,7 +316,8 @@ long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg)
 
 int nfc_dev_open(struct inode *inode, struct file *filp)
 {
-	nfc_dev_t *nfc_dev = container_of(inode->i_cdev, nfc_dev_t, c_dev);
+	struct nfc_dev *nfc_dev = container_of(inode->i_cdev, struct nfc_dev, c_dev);
+
 	pr_debug("%s: %d, %d\n", __func__, imajor(inode), iminor(inode));
 
 	mutex_lock(&nfc_dev->dev_ref_mutex);
@@ -339,7 +336,8 @@ int nfc_dev_open(struct inode *inode, struct file *filp)
 
 int nfc_dev_close(struct inode *inode, struct file *filp)
 {
-	nfc_dev_t *nfc_dev = container_of(inode->i_cdev, nfc_dev_t, c_dev);
+	struct nfc_dev *nfc_dev = container_of(inode->i_cdev, struct nfc_dev, c_dev);
+
 	pr_debug("%s: %d, %d\n", __func__, imajor(inode), iminor(inode));
 	mutex_lock(&nfc_dev->dev_ref_mutex);
 	if (nfc_dev->dev_ref_count == 1) {
@@ -351,7 +349,8 @@ int nfc_dev_close(struct inode *inode, struct file *filp)
 	else {
 		nfc_ese_pwr(nfc_dev, ESE_RST_PROT_DIS_NFC);
 		/* Uncomment below line incase of eSE calls flow is via NFC driver
-		 * i.e. direct calls from SPI HAL to NFC driver*/
+		 * i.e. direct calls from SPI HAL to NFC driver
+		 */
 		//nfc_ese_pwr(nfc_dev, ESE_RST_PROT_DIS);
 	}
 	filp->private_data = NULL;
@@ -360,248 +359,321 @@ int nfc_dev_close(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static int get_nfcc_boot_state(struct nfc_dev *nfc_dev)
+/**
+ * get_nfcc_chip_type_dl() - get chip type in fw download command;
+ * @nfc_dev:    nfc device data structure
+ *
+ * Perform get version command and determine chip
+ * type from response.
+ *
+ * @Return:  enum chip_types value
+ *
+ */
+static enum chip_types get_nfcc_chip_type_dl(struct nfc_dev *nfc_dev)
 {
 	int ret = 0;
-	char get_version_cmd[] = { 0x00, 0x04, 0xF1, 0x00, 0x00, 0x00, 0x6E, 0xEF };
-	char get_session_state_cmd[] = { 0x00, 0x04, 0xF2, 0x00, 0x00, 0x00, 0xF5, 0x33 };
-	char rsp_buf[MAX_BUFFER_SIZE];
+	int cmd_length = 0;
+	uint8_t *cmd = nfc_dev->write_kbuf;
+	uint8_t *rsp = nfc_dev->read_kbuf;
+	enum chip_types chip_type = CHIP_UNKNOWN;
 
-	pr_debug("%s:Sending GET_VERSION cmd\n", __func__);
-	ret = nfc_dev->nfc_write(nfc_dev, get_version_cmd,
-				 sizeof(get_version_cmd), MAX_RETRY_COUNT);
+	*cmd++ = 0x00;
+	*cmd++ = 0x04;
+	*cmd++ = 0xF1;
+	*cmd++ = 0x00;
+	*cmd++ = 0x00;
+	*cmd++ = 0x00;
+	*cmd++ = 0x6E;
+	*cmd++ = 0xEF;
+	cmd_length = cmd - nfc_dev->write_kbuf;
+
+	pr_debug("%s:Sending GET_VERSION cmd of size=%d\n", __func__, cmd_length);
+	ret = nfc_dev->nfc_write(nfc_dev, nfc_dev->write_kbuf, cmd_length, MAX_RETRY_COUNT);
 	if (ret <= 0) {
 		pr_err("%s: - nfc get version cmd error ret %d\n", __func__, ret);
 		goto err;
 	}
-	memset(rsp_buf, 0x00, MAX_BUFFER_SIZE);
+	memset(rsp, 0x00, DL_GET_VERSION_RSP_LEN_2);
 	pr_debug("%s:Reading response of GET_VERSION cmd\n", __func__);
-	ret = nfc_dev->nfc_read(nfc_dev, rsp_buf, DL_GET_VERSION_RSP_LEN_2, NCI_CMD_RSP_TIMEOUT);
+	ret = nfc_dev->nfc_read(nfc_dev, rsp, DL_GET_VERSION_RSP_LEN_2, NCI_CMD_RSP_TIMEOUT);
 	if (ret <= 0) {
 		pr_err("%s: - nfc get version rsp error ret %d\n", __func__, ret);
 		goto err;
-	} else if (rsp_buf[0] == FW_MSG_CMD_RSP
-		   && ret >= DL_GET_VERSION_RSP_LEN_2) {
-#if defined(RECOVERY_ENABLE)
-		nfc_dev->fw_major_version = rsp_buf[FW_MAJOR_VER_OFFSET];
-		/* recvoery  neeeded only for SN1xx */
-		if(rsp_buf[FW_ROM_CODE_VER_OFFSET] == RECOVERY_FW_SUPPORTED_ROM_VER &&
-			nfc_dev->fw_major_version == RECOVERY_FW_SUPPORTED_MAJOR_VER)
-			nfc_dev->recovery_required = true;
-#endif
-		pr_info("%s:NFC chip_type 0x%02x rom_version 0x%02x fw_minor 0x%02x fw_major 0x%02x\n",
-			__func__, rsp_buf[3], rsp_buf[4], rsp_buf[6], rsp_buf[7]);
-	} else if (rsp_buf[0] != FW_MSG_CMD_RSP
-		   && ret >= (NCI_HDR_LEN + rsp_buf[NCI_PAYLOAD_LEN_IDX])) {
-		pr_info("%s:NFC response bytes 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x\n", __func__,
-			rsp_buf[0], rsp_buf[1], rsp_buf[2], rsp_buf[3], rsp_buf[3]);
-		pr_debug("%s NFCC booted in NCI mode %d\n", __func__, __LINE__);
-		return NFC_STATE_NCI;
 	}
+	if (rsp[0] == FW_MSG_CMD_RSP && ret >= DL_GET_VERSION_RSP_LEN_2) {
 
-	pr_debug("%s:Sending GET_SESSION_STATE cmd \n", __func__);
-	ret = nfc_dev->nfc_write(nfc_dev, get_session_state_cmd,
-				 sizeof(get_session_state_cmd),
-				 MAX_RETRY_COUNT);
-	if (ret <= 0) {
-		pr_err("%s: - nfc get session state cmd err ret %d\n", __func__, ret);
-		goto err;
+		nfc_dev->fw_major_version = rsp[FW_MAJOR_VER_OFFSET];
+
+		if (rsp[FW_ROM_CODE_VER_OFFSET] == SN1XX_ROM_VER &&
+			rsp[FW_MAJOR_VER_OFFSET] == SN1xx_MAJOR_VER)
+			chip_type = CHIP_SN1XX;
+		else if (rsp[FW_ROM_CODE_VER_OFFSET] == SN220_ROM_VER &&
+			rsp[FW_MAJOR_VER_OFFSET] == SN220_MAJOR_VER)
+			chip_type = CHIP_SN220;
+		pr_info("%s:NFC Chip Type 0x%02x Rom Version 0x%02x FW Minor 0x%02x Major 0x%02x\n",
+			__func__, rsp[3], rsp[4], rsp[6], rsp[7]);
 	}
-	memset(rsp_buf, 0x00, DL_GET_SESSION_STATE_RSP_LEN);
-	pr_debug("%s:Reading response of GET_SESSION_STATE cmd\n", __func__);
-	ret = nfc_dev->nfc_read(nfc_dev, rsp_buf, DL_GET_SESSION_STATE_RSP_LEN, NCI_CMD_RSP_TIMEOUT);
-	if (ret <= 0) {
-		pr_err("%s: - nfc get session state rsp err %d\n", __func__, ret);
-		goto err;
-	}
-	pr_debug("Response bytes are %02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x",
-		 rsp_buf[0], rsp_buf[1], rsp_buf[2], rsp_buf[3], rsp_buf[4], rsp_buf[5],
-		 rsp_buf[6], rsp_buf[7]);
-	/*verify fw in non-teared state */
-	if (rsp_buf[GET_SESSION_STS_OFF] != NFCC_SESSION_STS_CLOSED) {
-		pr_debug("%s NFCC  booted in teared fw state %d\n", __func__, __LINE__);
-		return NFC_STATE_FW_TEARED;
-	}
-	pr_debug("%s NFCC booted in FW DN mode %d\n", __func__, __LINE__);
-	return NFC_STATE_FW_DWL;
 err:
-	pr_err("%s Unlikely NFCC not booted in FW DN mode %d\n", __func__, __LINE__);
-	return NFC_STATE_UNKNOWN;
+	return chip_type;
 }
 
-int validate_nfc_state_nci(nfc_dev_t *nfc_dev)
-{
-	platform_gpio_t *nfc_gpio = &nfc_dev->configs.gpio;
-	if (!gpio_get_value(nfc_gpio->ven)) {
-		pr_err("VEN LOW - NFCC powered off\n");
-		return -ENODEV;
-	} else {
-		if (get_valid_gpio(nfc_gpio->dwl_req) == 1) {
-			pr_err("FW download in-progress\n");
-			return -EBUSY;
-		} else if (nfc_dev->nfc_state == NFC_STATE_FW_DWL) {
-			pr_err("FW download state \n");
-			return -EBUSY;
-		}
-	}
-	return 0;
-}
-
-static int set_nfcc_nci_state(struct nfc_dev *nfc_dev)
+/**
+ * get_nfcc_session_state_dl() - gets the session state
+ * @nfc_dev:    nfc device data structure
+ *
+ * Performs get session command and determine
+ * the nfcc state based on session status.
+ *
+ * @Return     nfcc state based on session status.
+ *             NFC_STATE_FW_TEARED if sessionis not closed
+ *             NFC_STATE_FW_DWL if session closed
+ *             NFC_STATE_UNKNOWN in error cases.
+ */
+enum nfc_state_flags get_nfcc_session_state_dl(struct nfc_dev *nfc_dev)
 {
 	int ret = 0;
-	char dl_reset_cmd[] = { 0x00, 0x04, 0xF0, 0x00, 0x00, 0x00, 0x18, 0x5B };
+	int cmd_length = 0;
+	uint8_t *cmd = nfc_dev->write_kbuf;
+	uint8_t *rsp = nfc_dev->read_kbuf;
+	enum nfc_state_flags nfc_state = NFC_STATE_UNKNOWN;
 
-	pr_debug("%s:Sending DL_RESET to boot in NCI mode\n", __func__);
-	ret = nfc_dev->nfc_write(nfc_dev, dl_reset_cmd,
-				 sizeof(dl_reset_cmd), MAX_RETRY_COUNT);
+	*cmd++ = 0x00;
+	*cmd++ = 0x04;
+	*cmd++ = 0xF2;
+	*cmd++ = 0x00;
+	*cmd++ = 0x00;
+	*cmd++ = 0x00;
+	*cmd++ = 0xF5;
+	*cmd++ = 0x33;
+	cmd_length = cmd - nfc_dev->write_kbuf;
+
+	pr_debug("%s:Sending GET_SESSION_STATE cmd of size=%d\n", __func__, cmd_length);
+	ret = nfc_dev->nfc_write(nfc_dev, nfc_dev->write_kbuf, cmd_length, MAX_RETRY_COUNT);
 	if (ret <= 0) {
-		pr_err("%s: nfc dl reset cmd err ret %d\n", __func__, ret);
+		pr_err("%s: - nfc get session cmd error ret %d\n", __func__, ret);
 		goto err;
 	}
-	usleep_range(NFC_SOFT_RESET_WAIT_TIME_USEC,
-		     NFC_SOFT_RESET_WAIT_TIME_USEC + 100);
-	pr_debug("%s NFCC booted in NCI mode %d\n", __func__, __LINE__);
-	return 0;
-
+	memset(rsp, 0x00, DL_GET_SESSION_STATE_RSP_LEN);
+	pr_debug("%s:Reading response of GET_SESSION_STATE cmd\n", __func__);
+	ret = nfc_dev->nfc_read(nfc_dev, rsp, DL_GET_SESSION_STATE_RSP_LEN, NCI_CMD_RSP_TIMEOUT);
+	if (ret <= 0) {
+		pr_err("%s: - nfc get session rsp error ret %d\n", __func__, ret);
+		goto err;
+	}
+	if (rsp[0] != FW_MSG_CMD_RSP) {
+		pr_err("%s: - nfc invalid get session state rsp\n", __func__);
+		goto err;
+	}
+	pr_debug("Response bytes are %02x%02x%02x%02x%02x%02x%02x%02x",
+		rsp[0], rsp[1], rsp[2], rsp[3], rsp[4], rsp[5], rsp[6], rsp[7]);
+	/*verify fw in non-teared state */
+	if (rsp[GET_SESSION_STS_OFF] != NFCC_SESSION_STS_CLOSED) {
+		pr_err("%s NFCC booted in FW teared state\n", __func__);
+		nfc_state = NFC_STATE_FW_TEARED;
+	} else {
+		pr_info("%s NFCC booted in FW DN mode\n", __func__);
+		nfc_state = NFC_STATE_FW_DWL;
+	}
 err:
-	pr_err("%s Unlikely NFCC not booted in NCI mode %d\n", __func__, __LINE__);
-	return -1;
+	return nfc_state;
 }
 
-static bool do_nci_reset(nfc_dev_t *nfc_dev) {
-	const uint8_t cmd_reset_nci[] = {0x20, 0x00, 0x01, 0x00};
-	char rsp_buf[MAX_BUFFER_SIZE];
-	int status = 0;
+/**
+ * get_nfcc_chip_type() - get nfcc chip type in nci mode.
+ * @nfc_dev:   nfc device data structure.
+ *
+ * Function to perform nci core reset and extract
+ * chip type from the response.
+ *
+ * @Return:  enum chip_types value
+ *
+ */
+static enum chip_types get_nfcc_chip_type(struct nfc_dev *nfc_dev)
+{
+	int ret = 0;
+	int cmd_length = 0;
+	uint8_t major_version = 0;
+	uint8_t rom_version = 0;
+	uint8_t *cmd = nfc_dev->write_kbuf;
+	uint8_t *rsp = nfc_dev->read_kbuf;
+	enum chip_types chip_type = CHIP_UNKNOWN;
 
-	if (NULL == nfc_dev) {
-		pr_err("%s invalid params ", __func__);
-		return false;
-	}
-	pr_debug("%s Entry \n", __func__);
-	gpio_set_ven(nfc_dev, 0);
-	gpio_set_ven(nfc_dev, 1);
-	pr_debug(" %s send core reset cmd \n", __func__);
-	status = nfc_dev->nfc_write(nfc_dev, cmd_reset_nci,
-		sizeof(cmd_reset_nci), NO_RETRY);
-	if (status <= 0) {
-		pr_err(" %s: nfc nci core reset cmd err status %d\n", __func__, status);
-		return false;
+	*cmd++ = 0x20;
+	*cmd++ = 0x00;
+	*cmd++ = 0x01;
+	*cmd++ = 0x00;
+	cmd_length = cmd - nfc_dev->write_kbuf;
+
+	pr_debug("%s:Sending NCI Core Reset cmd of size=%d\n", __func__, cmd_length);
+	ret = nfc_dev->nfc_write(nfc_dev, nfc_dev->write_kbuf, cmd_length, NO_RETRY);
+	if (ret <= 0) {
+		pr_err("%s: - nfc nci core reset cmd error ret %d\n", __func__, ret);
+		goto err;
 	}
 	usleep_range(NCI_RESET_RESP_READ_DELAY, NCI_RESET_RESP_READ_DELAY + 100);
 	nfc_dev->nfc_enable_intr(nfc_dev);
-	pr_debug(" %s Reading response of NCI reset \n", __func__);
-	memset(rsp_buf, 0x00, MAX_BUFFER_SIZE);
-	status = nfc_dev->nfc_read(nfc_dev, rsp_buf, MAX_BUFFER_SIZE, NCI_RESET_RESP_TIMEOUT);
-	if (status <= 0) {
-		pr_err(" %s - nfc nci rest rsp error status %d\n", __func__, status);
-		nfc_dev->nfc_disable_intr(nfc_dev);
-		return false;
+
+	memset(rsp, 0x00, NCI_RESET_RSP_LEN);
+	pr_debug("%s:Reading NCI Core Reset rsp\n", __func__);
+	ret = nfc_dev->nfc_read(nfc_dev, rsp, NCI_RESET_RSP_LEN, NCI_CMD_RSP_TIMEOUT);
+	if (ret <= 0) {
+		pr_err("%s: - nfc nci core reset rsp error ret %d\n", __func__, ret);
+		goto err_disable_intr;
 	}
-	pr_debug(" %s: nci core reset response 0x%02x  0x%02x 0x%02x 0x%02x \n",
-		__func__, rsp_buf[0], rsp_buf[1],rsp_buf[2], rsp_buf[3]);
-	if(rsp_buf[0] != NCI_MSG_RSP) {
+
+	pr_debug(" %s: nci core reset response 0x%02x%02x%02x%02x\n",
+		__func__, rsp[0], rsp[1], rsp[2], rsp[3]);
+	if (rsp[0] != NCI_MSG_RSP) {
 		/* reset response failed response*/
-		pr_err("%s invalid nci core reset response");
-		nfc_dev->nfc_disable_intr(nfc_dev);
-		return false;
+		pr_err("%s invalid nci core reset response", __func__);
+		goto err_disable_intr;
 	}
-	memset(rsp_buf, 0x00, MAX_BUFFER_SIZE);
+
+	memset(rsp, 0x00, NCI_RESET_NTF_LEN);
 	/* read nci rest response ntf */
-	status = nfc_dev->nfc_read(nfc_dev, rsp_buf, MAX_BUFFER_SIZE, NCI_CMD_RSP_TIMEOUT);
-	if (status <= 0) {
-		pr_err("%s - nfc nci rest rsp ntf error status %d\n"
-			, __func__, status);
+	ret = nfc_dev->nfc_read(nfc_dev, rsp, NCI_RESET_NTF_LEN, NCI_CMD_RSP_TIMEOUT);
+	if (ret <= 0) {
+		pr_err("%s - nfc nci rest rsp ntf error status %d\n", __func__, ret);
+		goto err_disable_intr;
 	}
-	pr_debug(" %s:NFC NCI  Reset Response ntf 0x%02x  0x%02x 0x%02x 0x%02x \n",
-		__func__, rsp_buf[0], rsp_buf[1],rsp_buf[2], rsp_buf[3]);
+	if (rsp[0] == NCI_MSG_NTF) {
+		/* read version info from NCI Reset Notification */
+		rom_version = rsp[NCI_HDR_LEN + rsp[NCI_PAYLOAD_LEN_IDX] - 3];
+		major_version = rsp[NCI_HDR_LEN + rsp[NCI_PAYLOAD_LEN_IDX] - 2];
+		/* determine chip type based on version info */
+		if (rom_version == SN1XX_ROM_VER && major_version == SN1xx_MAJOR_VER)
+			chip_type = CHIP_SN1XX;
+		else if (rom_version == SN220_ROM_VER && major_version == SN220_MAJOR_VER)
+			chip_type = CHIP_SN220;
+		pr_debug(" %s:NCI  Core Reset ntf 0x%02x%02x%02x%02x\n",
+			__func__, rsp[0], rsp[1], rsp[2], rsp[3]);
+	}
+err_disable_intr:
 	nfc_dev->nfc_disable_intr(nfc_dev);
-	gpio_set_ven(nfc_dev, 0);
-	gpio_set_ven(nfc_dev, 1);
-	return true;
+err:
+	return chip_type;
+}
+
+/**
+ * validate_download_gpio() - validate download gpio.
+ * @nfc_dev: nfc_dev device data structure.
+ * @chip_type: chip type of the platform.
+ *
+ * Validates dwnld gpio should configured for supported and
+ * should not be configured for unsupported platform.
+ *
+ * @Return:  true if gpio validation successful ortherwise
+ *           false if validation fails.
+ */
+static bool validate_download_gpio(struct nfc_dev *nfc_dev, enum chip_types chip_type)
+{
+	bool status = false;
+	struct platform_gpio *nfc_gpio;
+
+	if (nfc_dev == NULL) {
+		pr_err("%s nfc devices structure is null\n");
+		return status;
+	}
+	nfc_gpio = &nfc_dev->configs.gpio;
+	if (chip_type == CHIP_SN1XX) {
+		/* gpio should be configured for SN1xx */
+		status = gpio_is_valid(nfc_gpio->dwl_req);
+	} else if (chip_type == CHIP_SN220) {
+		/* gpio should not be configured for SN220 */
+		set_valid_gpio(nfc_gpio->dwl_req, 0);
+		gpio_free(nfc_gpio->dwl_req);
+		nfc_gpio->dwl_req = -EINVAL;
+		status = true;
+	}
+	return status;
 }
 
 /* Check for availability of NFC controller hardware */
 int nfcc_hw_check(struct nfc_dev *nfc_dev)
 {
 	int ret = 0;
-	uint8_t nfc_state = NFC_STATE_UNKNOWN;
-	if(do_nci_reset(nfc_dev)) {
-	  pr_info("%s recovery not required", __func__);
-	  return ret;
+	enum nfc_state_flags nfc_state = NFC_STATE_UNKNOWN;
+	enum chip_types chip_type = CHIP_UNKNOWN;
+	struct platform_gpio *nfc_gpio = &nfc_dev->configs.gpio;
+
+	/*get fw version in nci mode*/
+	gpio_set_ven(nfc_dev, 0);
+	gpio_set_ven(nfc_dev, 1);
+	chip_type = get_nfcc_chip_type(nfc_dev);
+
+	/*get fw version in fw dwl mode*/
+	if (chip_type == CHIP_UNKNOWN) {
+		nfc_dev->nfc_enable_intr(nfc_dev);
+		/*Chip is unknown, initially assume with fw dwl pin enabled*/
+		set_valid_gpio(nfc_gpio->dwl_req, 1);
+		gpio_set_ven(nfc_dev, 0);
+		gpio_set_ven(nfc_dev, 1);
+		chip_type = get_nfcc_chip_type_dl(nfc_dev);
+		/*get the state of nfcc normal/teared in fw dwl mode*/
+	} else {
+		nfc_state = NFC_STATE_NCI;
 	}
-	nfc_dev->nfc_enable_intr(nfc_dev);
 
-	/*set download mode for i2c products with dwl pin */
-	enable_dwnld_mode(nfc_dev, true);
+	/*validate gpio config required as per the chip*/
+	if (!validate_download_gpio(nfc_dev, chip_type)) {
+		pr_info("%s gpio validation fail", __func__);
+		ret = -ENXIO;
+		goto err;
+	}
 
-	nfc_state = get_nfcc_boot_state(nfc_dev);
+	/*check whether the NFCC is in FW DN or Teared state*/
+	if (nfc_state != NFC_STATE_NCI)
+		nfc_state = get_nfcc_session_state_dl(nfc_dev);
+
+	/*nfcc state specific operations */
 	switch (nfc_state) {
-	case NFC_STATE_FW_DWL:
-		usleep_range(NFC_GPIO_SET_WAIT_TIME_USEC,
-			     NFC_GPIO_SET_WAIT_TIME_USEC + 100);
-		if (set_nfcc_nci_state(nfc_dev)) {
-			pr_debug("%s: - NFCC DL Reset Fails\n", __func__);
-		} else {
-			nfc_state = NFC_STATE_NCI;
-			/*set NCI mode for i2c products with dwl pin */
-			enable_dwnld_mode(nfc_dev, false);
-		}
-	/* fall-through */
-	case NFC_STATE_NCI:
-		nfc_dev->nfc_ven_enabled = true;
-		pr_debug("%s: - NFCC HW detected\n", __func__);
-		break;
 	case NFC_STATE_FW_TEARED:
 		pr_warn("%s: - NFCC FW Teared State\n", __func__);
-#if defined(RECOVERY_ENABLE)
-		if(nfc_dev->recovery_required &&
-			(do_recovery(nfc_dev) == STATUS_SUCCESS)) {
-			pr_debug("%s: - NFCC HW detected\n", __func__);
+#if IS_ENABLED(CONFIG_NXP_NFC_RECOVERY)
+		/* recovery neeeded only for SN1xx */
+		if (chip_type == CHIP_SN1XX) {
+			if (do_recovery(nfc_dev) == STATUS_FAILED)
+				pr_debug("%s: - nfcc recoverey failed\n", __func__);
+			else
+				pr_debug("%s: - nfcc recovered successfully\n", __func__);
+			nfc_state = get_nfcc_session_state_dl(nfc_dev);
 		}
 #endif
-		nfc_dev->nfc_ven_enabled = true;
+		/*fallthrough*/
+	case NFC_STATE_FW_DWL:
+	case NFC_STATE_NCI:
 		break;
 	case NFC_STATE_UNKNOWN:
 	default:
 		ret = -ENXIO;
-		pr_debug("%s: - NFCC HW not available\n", __func__);
+		pr_err("%s: - NFCC HW not available\n", __func__);
+		goto err;
 	};
-
-	nfc_dev->nfc_disable_intr(nfc_dev);
-	if (nfc_state == NFC_STATE_FW_TEARED) {
-		nfc_state = NFC_STATE_FW_DWL;
-	}
 	nfc_dev->nfc_state = nfc_state;
+	nfc_dev->nfc_ven_enabled = true;
+err:
+	nfc_dev->nfc_disable_intr(nfc_dev);
+	set_valid_gpio(nfc_gpio->dwl_req, 0);
+	gpio_set_ven(nfc_dev, 0);
+	gpio_set_ven(nfc_dev, 1);
 	return ret;
 }
 
-void enable_dwnld_mode(nfc_dev_t* nfc_dev, bool value) {
-	if(nfc_dev != NULL) {
-		platform_gpio_t *nfc_gpio = &nfc_dev->configs.gpio;
-		if (get_valid_gpio(nfc_gpio->dwl_req) != -1) {
-			set_valid_gpio(nfc_gpio->dwl_req, value);
-			gpio_set_ven(nfc_dev, 0);
-			gpio_set_ven(nfc_dev, 1);
-		}
-	}
-}
-
-void set_nfcc_state_from_rsp(struct nfc_dev *dev, const char *buf,
-			     const int count)
+int validate_nfc_state_nci(struct nfc_dev *nfc_dev)
 {
-	int packet_size = 0;
-	if (buf[0] == FW_MSG_CMD_RSP && buf[1] >= FW_MIN_PAYLOAD_LEN) {
-		packet_size = FW_HDR_LEN + buf[FW_PAYLOAD_LEN_IDX] + FW_CRC_LEN;
-		if (packet_size == count && dev->nfc_state == NFC_STATE_NCI)
-			dev->nfc_state = NFC_STATE_FW_DWL;
-	} else {
-		packet_size = NCI_HDR_LEN + buf[NCI_PAYLOAD_LEN_IDX];
-		if (packet_size == count && dev->nfc_state == NFC_STATE_FW_DWL)
-			dev->nfc_state = NFC_STATE_NCI;
+	struct platform_gpio *nfc_gpio = &nfc_dev->configs.gpio;
+
+	if (!gpio_get_value(nfc_gpio->ven)) {
+		pr_err("VEN LOW - NFCC powered off\n");
+		return -ENODEV;
 	}
-	if (count != packet_size) {
-		pr_err("%s: Unlikely mismatch in packet size received (%d/%d)/\n", __func__,
-		       packet_size, count);
+	if (get_valid_gpio(nfc_gpio->dwl_req) == 1) {
+		pr_err("FW download in-progress\n");
+		return -EBUSY;
 	}
+	if (nfc_dev->nfc_state != NFC_STATE_NCI) {
+		pr_err("FW download state\n");
+		return -EBUSY;
+	}
+	return 0;
 }

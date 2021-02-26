@@ -1,4 +1,5 @@
 /******************************************************************************
+ *  Copyright (C) 2015, The Linux Foundation. All rights reserved.
  *  Copyright (C) 2019-2021 NXP
  *   *
  * This program is free software; you can redistribute it and/or modify
@@ -38,6 +39,7 @@
 // NCI packet details
 #define NCI_MSG_CMD                 0x20
 #define NCI_MSG_RSP                 0x40
+#define NCI_MSG_NTF                 0x60
 #define NCI_HDR_LEN                 3
 #define NCI_PAYLOAD_IDX             3
 #define NCI_PAYLOAD_LEN_IDX         2
@@ -56,6 +58,13 @@
 #define NCI_RESET_CMD_LEN           (4)
 #define NCI_RESET_RSP_LEN           (4)
 #define NCI_RESET_NTF_LEN           (13)
+
+#define SN1XX_ROM_VER               0x01
+#define SN1xx_MAJOR_VER             0x10
+#define SN220_ROM_VER               0x01
+#define SN220_MAJOR_VER             0x01
+#define FW_ROM_CODE_VER_OFFSET      4
+#define FW_MAJOR_VER_OFFSET         7
 
 #define DL_GET_VERSION_CMD_LEN      (8)
 #define DL_GET_VERSION_RSP_LEN_1    (12)
@@ -77,14 +86,13 @@
 #define MAX_IRQ_WAIT_TIME               (90)
 #define WAKEUP_SRC_TIMEOUT              (2000)
 
-#define NCI_MAX_CMD_RSP_TIMEOUT         (5000)	//5s
 /*command response timeout*/
 #define NCI_CMD_RSP_TIMEOUT             (2000)	//2s
 /*Time to wait for NFCC to be ready again after any change in the GPIO*/
 #define NFC_GPIO_SET_WAIT_TIME_USEC     (10000)
 /*Time to wait after soft reset via any NCI/DL cmd*/
 #define NFC_SOFT_RESET_WAIT_TIME_USEC   (5000)
-/*Time to wait before retrying i2c writes*/
+/*Time to wait before retrying i2c/I3C writes*/
 #define WRITE_RETRY_WAIT_TIME_USEC      (1000)
 /*Time to wait before retrying read for some specific usecases*/
 #define READ_RETRY_WAIT_TIME_USEC       (3500)
@@ -95,8 +103,6 @@
 #define NFC_SET_PWR            _IOW(NFC_MAGIC, 0x01, long)
 #define ESE_SET_PWR            _IOW(NFC_MAGIC, 0x02, long)
 #define ESE_GET_PWR            _IOR(NFC_MAGIC, 0x03, long)
-#define NFC_GET_PLATFORM_TYPE  _IO(NFC_MAGIC, 0x04)
-#define NFC_GET_NFC_STATE      _IO(NFC_MAGIC, 0x05)
 /* NFC HAL can call this ioctl to get the current IRQ state */
 #define NFC_GET_IRQ_STATE      _IO(NFC_MAGIC, 0x06)
 
@@ -158,34 +164,41 @@ enum gpio_values {
 };
 
 // NFC GPIO variables
-typedef struct platform_gpio {
+struct platform_gpio {
 	unsigned int irq;
 	unsigned int ven;
 	unsigned int dwl_req;
-} platform_gpio_t;
+};
 
-// NFC Struct to get all the required configs from DTS*/
-typedef struct platform_configs {
-	platform_gpio_t gpio;
-} platform_configs_t;
+// NFC Struct to get all the required configs from DTS
+struct platform_configs {
+	struct platform_gpio gpio;
+};
 
 //cold reset Features specific Parameters
-typedef struct cold_reset {
+struct cold_reset {
 	bool rsp_pending;	/*cmd rsp pending status */
 	bool in_progress;	/*for cold reset when gurad timer in progress */
 	bool reset_protection;	/*reset protection enabled/disabled */
 	uint8_t status;		/*status from response buffer */
 	uint8_t rst_prot_src;	/*reset protection source (SPI, NFC) */
-	struct mutex sync_mutex;
 	struct timer_list timer;
 	wait_queue_head_t read_wq;
-} cold_reset_t;
+};
+
+enum chip_types {
+	CHIP_SN1XX = 0x01,
+	CHIP_SN220 = 0x02,
+	CHIP_UNKNOWN = 0xFF,
+};
 
 /* Device specific structure */
-typedef struct nfc_dev {
+struct nfc_dev {
 	wait_queue_head_t read_wq;
 	struct mutex read_mutex;
-	struct mutex ese_access_mutex;
+	struct mutex write_mutex;
+	uint8_t *read_kbuf;
+	uint8_t *write_kbuf;
 	struct mutex dev_ref_mutex;
 	unsigned int dev_ref_count;
 	struct class *nfc_class;
@@ -198,42 +211,34 @@ typedef struct nfc_dev {
 	uint8_t nfc_state;
 	/* NFC VEN pin state */
 	bool nfc_ven_enabled;
-#if defined(RECOVERY_ENABLE)
 	/* current firmware major version */
 	uint8_t fw_major_version;
-	/* NFC recovery Required */
-	bool recovery_required;
-#endif
 	union {
-		i2c_dev_t i2c_dev;
+		struct i2c_dev i2c_dev;
 	};
-	platform_configs_t configs;
-	cold_reset_t cold_reset;
+	struct platform_configs configs;
+	struct cold_reset cold_reset;
 
-	/*funtion pointers for the common i2c functionality */
-	int (*nfc_read) (struct nfc_dev *dev, char *buf, size_t count, int timeout);
-	int (*nfc_write) (struct nfc_dev *dev, const char *buf, const size_t count,
+	/*function pointers for the common i2c functionality */
+	int (*nfc_read)(struct nfc_dev *dev, char *buf, size_t count, int timeout);
+	int (*nfc_write)(struct nfc_dev *dev, const char *buf, const size_t count,
 			  int max_retry_cnt);
-	int (*nfc_enable_intr) (struct nfc_dev *dev);
-	int (*nfc_disable_intr) (struct nfc_dev *dev);
-	int (*nfc_flush_readq) (struct nfc_dev *dev);
-} nfc_dev_t;
+	int (*nfc_enable_intr)(struct nfc_dev *dev);
+	int (*nfc_disable_intr)(struct nfc_dev *dev);
+};
 
 int nfc_dev_open(struct inode *inode, struct file *filp);
 int nfc_dev_close(struct inode *inode, struct file *filp);
 long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg);
-int nfc_parse_dt(struct device *dev, platform_configs_t *nfc_configs,
+int nfc_parse_dt(struct device *dev, struct platform_configs *nfc_configs,
 		 uint8_t interface);
-int nfc_misc_register(nfc_dev_t *nfc_dev,
+int nfc_misc_register(struct nfc_dev *nfc_dev,
 		      const struct file_operations *nfc_fops, int count, char *devname,
 		      char *classname);
-void nfc_misc_unregister(nfc_dev_t *nfc_dev, int count);
+void nfc_misc_unregister(struct nfc_dev *nfc_dev, int count);
 int configure_gpio(unsigned int gpio, int flag);
-void gpio_set_ven(nfc_dev_t *nfc_dev, int value);
-void gpio_free_all(nfc_dev_t *nfc_dev);
-int validate_nfc_state_nci(nfc_dev_t *nfc_dev);
-int nfcc_hw_check(nfc_dev_t *nfc_dev);
-void set_nfcc_state_from_rsp(nfc_dev_t *dev, const char *buf,
-			     const int count);
-void enable_dwnld_mode(nfc_dev_t* nfc_dev, bool value);
+void gpio_set_ven(struct nfc_dev *nfc_dev, int value);
+void gpio_free_all(struct nfc_dev *nfc_dev);
+int validate_nfc_state_nci(struct nfc_dev *nfc_dev);
+int nfcc_hw_check(struct nfc_dev *nfc_dev);
 #endif //_COMMON_H_

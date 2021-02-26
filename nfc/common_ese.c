@@ -30,17 +30,18 @@
 
 static void cold_reset_gaurd_timer_callback(struct timer_list *t)
 {
-	cold_reset_t *cold_reset = from_timer(cold_reset, t, timer);
+	struct cold_reset *cold_reset = from_timer(cold_reset, t, timer);
+
 	pr_debug("%s: Enter\n", __func__);
 	cold_reset->in_progress = false;
-	return;
 }
 
-static long start_cold_reset_guard_timer(cold_reset_t *cold_reset)
+static long start_cold_reset_guard_timer(struct cold_reset *cold_reset)
 {
 	long ret = -EINVAL;
+
 	if (timer_pending(&cold_reset->timer) == 1) {
-		pr_debug("ese_cold_reset_guard_timer: delete pending timer \n");
+		pr_debug("ese_cold_reset_guard_timer: delete pending timer\n");
 		/* delete timer if already pending */
 		del_timer(&cold_reset->timer);
 	}
@@ -51,34 +52,33 @@ static long start_cold_reset_guard_timer(cold_reset_t *cold_reset)
 	return ret;
 }
 
-static int send_cold_reset_protection_cmd(nfc_dev_t *nfc_dev, bool requestType)
+static int send_cold_reset_protection_cmd(struct nfc_dev *nfc_dev, bool requestType)
 {
 	int ret = 0;
-	int length = 0;
-	uint8_t *cmd = NULL;
-	uint8_t cld_rst_cmd[] = { NCI_PROP_MSG_CMD, CLD_RST_OID,
-				  CLD_RST_PAYLOAD_SIZE
-				};
-	uint8_t rst_prot_cmd[] = { NCI_PROP_MSG_CMD, RST_PROT_OID,
-				   RST_PROT_PAYLOAD_SIZE, 0x00
-				 };
+	int cmd_length = 0;
+	uint8_t *cmd = nfc_dev->write_kbuf;
+	struct cold_reset *cold_reset = &nfc_dev->cold_reset;
 
-	cold_reset_t *cold_reset = &nfc_dev->cold_reset;
-	if (requestType) {
-		length = sizeof(rst_prot_cmd);
-		rst_prot_cmd[NCI_PAYLOAD_IDX] = (!cold_reset->reset_protection) ? 1 : 0;
-		cmd = rst_prot_cmd;
-	} else {
-		length = sizeof(cld_rst_cmd);
-		cmd = cld_rst_cmd;
+	mutex_lock(&nfc_dev->write_mutex);
+	*cmd++ = NCI_PROP_MSG_CMD;
+
+	if (requestType) {	/*reset protection*/
+		*cmd++ = RST_PROT_OID;
+		*cmd++ = RST_PROT_PAYLOAD_SIZE;
+		*cmd++ = (!cold_reset->reset_protection) ? 1 : 0;
+	} else {	/*cold reset*/
+		*cmd++ = CLD_RST_OID;
+		*cmd++ = CLD_RST_PAYLOAD_SIZE;
 	}
+	cmd_length = cmd - nfc_dev->write_kbuf;
 
-	ret = nfc_dev->nfc_write(nfc_dev, cmd, length, MAX_RETRY_COUNT);
-	if (ret != length) {
+	ret = nfc_dev->nfc_write(nfc_dev, nfc_dev->write_kbuf, cmd_length, MAX_RETRY_COUNT);
+	if (ret != cmd_length) {
+		ret = -EIO;
 		pr_err("%s : nfc_write returned %d\n", __func__, ret);
-		return -EIO;
+		goto  exit;
 	}
-
+	cmd = nfc_dev->write_kbuf;
 	if (requestType) {
 		pr_debug("%s: NxpNciX: %d > %02X%02X%02X%02X\n", __func__, ret, cmd[0], cmd[1],
 			 cmd[2], cmd[3]);
@@ -86,19 +86,21 @@ static int send_cold_reset_protection_cmd(nfc_dev_t *nfc_dev, bool requestType)
 		pr_debug("%s: NxpNciX: %d > %02X%02X%02X\n", __func__, ret, cmd[0], cmd[1],
 			 cmd[2]);
 	}
+exit:
+	mutex_unlock(&nfc_dev->write_mutex);
 	return ret;
 }
 
-void wakeup_on_prop_rsp(nfc_dev_t *nfc_dev, uint8_t *buf)
+void wakeup_on_prop_rsp(struct nfc_dev *nfc_dev, uint8_t *buf)
 {
-	cold_reset_t *cold_reset = &nfc_dev->cold_reset;
-	cold_reset->status = -EIO;
+	struct cold_reset *cold_reset = &nfc_dev->cold_reset;
 
-	if ((NCI_HDR_LEN + buf[NCI_PAYLOAD_LEN_IDX]) != NCI_PROP_MSG_RSP_LEN) {
-		pr_err("%s: - invalid response for cold_reset/protection \n", __func__);
-	} else {
+	cold_reset->status = -EIO;
+	if ((NCI_HDR_LEN + buf[NCI_PAYLOAD_LEN_IDX]) != NCI_PROP_MSG_RSP_LEN)
+		pr_err("%s: - invalid response for cold_reset/protection\n", __func__);
+	else
 		cold_reset->status = buf[NCI_PAYLOAD_IDX];
-	}
+
 	pr_debug("%s NxpNciR : len = 4 > %02X%02X%02X%02X\n", __func__, buf[0], buf[1],
 		buf[2], buf[3]);
 
@@ -106,9 +108,11 @@ void wakeup_on_prop_rsp(nfc_dev_t *nfc_dev, uint8_t *buf)
 	wake_up_interruptible(&cold_reset->read_wq);
 }
 
-static int validate_cold_reset_protection_request(cold_reset_t *cold_reset,
+static int validate_cold_reset_protection_request(struct cold_reset *cold_reset,
 		unsigned long arg)
 {
+	int ret = 0;
+
 	if (!cold_reset->reset_protection) {
 		if (IS_RST_PROT_EN_REQ(arg) && IS_SRC_VALID_PROT(arg)) {
 			pr_debug("%s:req - reset protection enable\n", __func__);
@@ -116,10 +120,10 @@ static int validate_cold_reset_protection_request(cold_reset_t *cold_reset,
 			pr_debug("%s:req - cold reset\n", __func__);
 		} else if (IS_RST_PROT_DIS_REQ(arg) && IS_SRC_VALID_PROT(arg)) {
 			pr_debug("%s:req - reset protection already disable\n", __func__);
-			return -EINVAL;
+			ret = -EINVAL;
 		} else {
-			pr_err("%s:Operation not permitted \n", __func__);
-			return -EPERM;
+			pr_err("%s:Operation not permitted\n", __func__);
+			ret = -EPERM;
 		}
 	} else {
 		if (IS_RST_PROT_DIS_REQ(arg)
@@ -130,21 +134,21 @@ static int validate_cold_reset_protection_request(cold_reset_t *cold_reset,
 			pr_debug("%s:req - cold reset from same source\n", __func__);
 		} else if (IS_RST_PROT_EN_REQ(arg)
 			   && IS_SRC(arg, cold_reset->rst_prot_src)) {
-			pr_debug("%s:request - enable reset protection from same source\n", __func__);
+			pr_debug("%s:req - enable reset protection from same src\n", __func__);
 		} else {
-			pr_err("%s: Operation not permitted \n", __func__);
-			return -EPERM;
+			pr_err("%s: Operation not permitted\n", __func__);
+			ret = -EPERM;
 		}
 	}
-	return 0;
+	return ret;
 }
 
-static int perform_cold_reset_protection(nfc_dev_t *nfc_dev, unsigned long arg)
+static int perform_cold_reset_protection(struct nfc_dev *nfc_dev, unsigned long arg)
 {
 	int ret = 0;
 	struct file filp;
-	uint8_t cld_rst_rsp[MAX_BUFFER_SIZE];
-	cold_reset_t *cold_reset = &nfc_dev->cold_reset;
+	char *rsp = nfc_dev->read_kbuf;
+	struct cold_reset *cold_reset = &nfc_dev->cold_reset;
 	bool nfc_dev_opened = false;
 
 	/*check if NFCC not in the FW download or hard reset state */
@@ -157,9 +161,7 @@ static int perform_cold_reset_protection(nfc_dev_t *nfc_dev, unsigned long arg)
 	/* check if NFC is enabled */
 	mutex_lock(&nfc_dev->dev_ref_mutex);
 	nfc_dev_opened = (nfc_dev->dev_ref_count > 0) ? true : false;
-	mutex_unlock(&nfc_dev->dev_ref_mutex);
 
-	mutex_lock(&cold_reset->sync_mutex);
 	/*check if NFCC not in the FW download or hard reset state */
 	ret = validate_cold_reset_protection_request(cold_reset, arg);
 	if (ret < 0) {
@@ -191,7 +193,7 @@ static int perform_cold_reset_protection(nfc_dev_t *nfc_dev, unsigned long arg)
 	/*start the cold reset guard timer */
 	if (IS_CLD_RST_REQ(arg)) {
 		/*Guard timer not needed when OSU over NFC*/
-		if(!(cold_reset->reset_protection && IS_SRC_NFC(arg))) {
+		if (!(cold_reset->reset_protection && IS_SRC_NFC(arg))) {
 			ret = start_cold_reset_guard_timer(cold_reset);
 			if (ret) {
 				pr_err("%s: Error in mod_timer\n", __func__);
@@ -213,12 +215,14 @@ static int perform_cold_reset_protection(nfc_dev_t *nfc_dev, unsigned long arg)
 		} else {
 			/* Read data as NFC thread is not active */
 			filp.private_data = nfc_dev;
-			filp.f_flags &= ~O_NONBLOCK;
-			ret = nfc_dev->nfc_read(nfc_dev, cld_rst_rsp, 3, NCI_CMD_RSP_TIMEOUT);
-			if (!ret)
-				break;
-			usleep_range(READ_RETRY_WAIT_TIME_USEC,
-					 READ_RETRY_WAIT_TIME_USEC + 500);
+			if (nfc_dev->interface == PLATFORM_IF_I2C) {
+				filp.f_flags &= ~O_NONBLOCK;
+				ret = nfc_dev->nfc_read(nfc_dev, rsp, 3, NCI_CMD_RSP_TIMEOUT);
+				if (!ret)
+					break;
+				usleep_range(READ_RETRY_WAIT_TIME_USEC,
+					     READ_RETRY_WAIT_TIME_USEC + 500);
+			}
 		}
 	} while (ret == -ERESTARTSYS || ret == -EFAULT);
 
@@ -237,7 +241,7 @@ static int perform_cold_reset_protection(nfc_dev_t *nfc_dev, unsigned long arg)
 		}
 	}
 err:
-	mutex_unlock(&cold_reset->sync_mutex);
+	mutex_unlock(&nfc_dev->dev_ref_mutex);
 	return ret;
 }
 
@@ -247,10 +251,11 @@ err:
  * VEN HIGH - eSE and NFCC both are powered on
  * VEN LOW - eSE and NFCC both are power down
  */
-int nfc_ese_pwr(nfc_dev_t *nfc_dev, unsigned long arg)
+int nfc_ese_pwr(struct nfc_dev *nfc_dev, unsigned long arg)
 {
 	int ret = 0;
-	platform_gpio_t *nfc_gpio = &nfc_dev->configs.gpio;
+	struct platform_gpio *nfc_gpio = &nfc_dev->configs.gpio;
+
 	if (arg == ESE_POWER_ON) {
 		/**
 		 * Let's store the NFC VEN pin state
@@ -284,64 +289,62 @@ int nfc_ese_pwr(nfc_dev_t *nfc_dev, unsigned long arg)
 	}
 	return ret;
 }
-
 EXPORT_SYMBOL(nfc_ese_pwr);
 
 #define ESE_LEGACY_INTERFACE
 #ifdef ESE_LEGACY_INTERFACE
-static nfc_dev_t *nfc_dev_legacy = NULL;
+static struct nfc_dev *nfc_dev_legacy;
 
 /******************************************************************************
  * perform_ese_cold_reset() - It shall be called by others driver(not nfc/ese)
  * to perform cold reset only
  * @arg: request of cold reset from other drivers should be ESE_CLD_RST_OTHER
  *
- * Returns:- 0 in case of sucess and negative values in case of failure
+ * Returns:- 0 in case of success and negative values in case of failure
  *****************************************************************************/
 int perform_ese_cold_reset(unsigned long arg)
 {
 	int ret = 0;
+
 	if (nfc_dev_legacy) {
 		if (IS_CLD_RST_REQ(arg) && IS_SRC_OTHER(arg)) {
 			ret = nfc_ese_pwr(nfc_dev_legacy, arg);
 		} else {
-			pr_err("%s :  Operation not permitted \n", __func__);
+			pr_err("%s :  Operation not permitted\n", __func__);
 			return -EPERM;
 		}
 	}
 	pr_debug("%s:%d exit, status:%lu", __func__, arg, ret);
 	return ret;
 }
-
 EXPORT_SYMBOL(perform_ese_cold_reset);
 #endif //ESE_LEGACY_INTERFACE
 
-void common_ese_on_hard_reset(nfc_dev_t *nfc_dev)
+void ese_cold_reset_release(struct nfc_dev *nfc_dev)
 {
-	cold_reset_t *cold_reset = &nfc_dev->cold_reset;
+	struct cold_reset *cold_reset = &nfc_dev->cold_reset;
+
 	cold_reset->rsp_pending = false;
 	cold_reset->in_progress = false;
-	if (timer_pending(&cold_reset->timer) == 1) {
+	if (timer_pending(&cold_reset->timer) == 1)
 		del_timer(&cold_reset->timer);
-	}
 }
 
-void common_ese_init(nfc_dev_t *nfc_dev)
+void common_ese_init(struct nfc_dev *nfc_dev)
 {
-	cold_reset_t *cold_reset = &nfc_dev->cold_reset;
+	struct cold_reset *cold_reset = &nfc_dev->cold_reset;
+
 	cold_reset->reset_protection = false;
 	cold_reset->rst_prot_src = SRC_NONE;
 	init_waitqueue_head(&cold_reset->read_wq);
-	mutex_init(&cold_reset->sync_mutex);
-	common_ese_on_hard_reset(nfc_dev);
+	ese_cold_reset_release(nfc_dev);
 #ifdef ESE_LEGACY_INTERFACE
 	nfc_dev_legacy = nfc_dev;
 #endif //ESE_LEGACY_INTERFACE
 }
 
-void common_ese_exit(nfc_dev_t *nfc_dev)
+void common_ese_exit(struct nfc_dev *nfc_dev)
 {
-	mutex_destroy(&nfc_dev->cold_reset.sync_mutex);
 #ifdef ESE_LEGACY_INTERFACE
 	nfc_dev_legacy = NULL;
 #endif //ESE_LEGACY_INTERFACE
