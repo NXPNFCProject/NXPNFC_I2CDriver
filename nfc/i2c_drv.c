@@ -128,7 +128,6 @@ int i2c_read(struct nfc_dev *nfc_dev, char *buf, size_t count, int timeout)
 						nfc_dev->read_wq,
 						!i2c_dev->irq_enabled,
 						msecs_to_jiffies(timeout));
-
 					if (ret <= 0) {
 						pr_err("%s: timeout error\n",
 						       __func__);
@@ -153,6 +152,18 @@ int i2c_read(struct nfc_dev *nfc_dev, char *buf, size_t count, int timeout)
 				pr_info("%s: releasing read\n", __func__);
 				ret = -EIO;
 				goto err;
+			}
+			/*
+			 * NFC service wanted to close the driver so,
+			 * release the calling reader thread asap.
+			 *
+			 * This can happen in case of nfc node close call from
+			 * eSE HAL in that case the NFC HAL reader thread
+			 * will again call read system call
+			 */
+			if (nfc_dev->release_read) {
+				pr_debug("%s: releasing read\n", __func__);
+				return 0;
 			}
 			pr_warn("%s: spurious interrupt detected\n", __func__);
 		}
@@ -218,7 +229,7 @@ int i2c_write(struct nfc_dev *nfc_dev, const char *buf, size_t count,
 			break;
 		}
 		if (retry_cnt == MAX_WRITE_IRQ_COUNT &&
-			     gpio_get_value(nfc_gpio->irq)) {
+		    gpio_get_value(nfc_gpio->irq)) {
 			pr_warn("%s: allow after maximum wait\n", __func__);
 		}
 	}
@@ -287,6 +298,7 @@ static const struct file_operations nfc_i2c_dev_fops = {
 	.read = nfc_i2c_dev_read,
 	.write = nfc_i2c_dev_write,
 	.open = nfc_dev_open,
+	.flush = nfc_dev_flush,
 	.release = nfc_dev_close,
 	.unlocked_ioctl = nfc_dev_ioctl,
 };

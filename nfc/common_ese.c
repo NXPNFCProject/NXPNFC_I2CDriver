@@ -261,7 +261,10 @@ err:
  * Device power control. Depending on the arg value, device moves to
  * different states, refer common_ese.h for args
  *
- * Return: -ENOIOCTLCMD if arg is not supported, 0 in any other case
+ * Return: -ENOIOCTLCMD if arg is not supported
+ * 0 if Success(or no issue)
+ * 0 or 1 in case of arg is ESE_POWER_STATE
+ * and error ret code otherwise
  */
 int nfc_ese_pwr(struct nfc_dev *nfc_dev, unsigned long arg)
 {

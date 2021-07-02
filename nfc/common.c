@@ -224,7 +224,8 @@ int nfc_misc_register(struct nfc_dev *nfc_dev,
  * Device power control. Depending on the arg value, device moves to
  * different states, refer common.h for args
  *
- * Return: -ENOIOCTLCMD if arg is not supported, 0 in any other case
+ * Return: -ENOIOCTLCMD if arg is not supported, 0 if Success(or no issue)
+ * and error ret code otherwise
  */
 static int nfc_ioctl_power_states(struct nfc_dev *nfc_dev, unsigned long arg)
 {
@@ -293,7 +294,10 @@ static int nfc_ioctl_power_states(struct nfc_dev *nfc_dev, unsigned long arg)
  *
  * NFC and ESE Device power control, based on the argument value
  *
- * Return: -ENOIOCTLCMD if arg is not supported, 0 or other in any other case
+ * Return: -ENOIOCTLCMD if arg is not supported
+ * 0 if Success(or no issue)
+ * 0 or 1 in case of arg is ESE_GET_PWR/ESE_POWER_STATE
+ * and error ret code otherwise
  */
 long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg)
 {
@@ -323,8 +327,8 @@ long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg)
 
 int nfc_dev_open(struct inode *inode, struct file *filp)
 {
-	struct nfc_dev *nfc_dev =
-		container_of(inode->i_cdev, struct nfc_dev, c_dev);
+	struct nfc_dev *nfc_dev = NULL;
+	nfc_dev = container_of(inode->i_cdev, struct nfc_dev, c_dev);
 
 	if (!nfc_dev)
 		return -ENODEV;
@@ -345,10 +349,33 @@ int nfc_dev_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+int nfc_dev_flush(struct file *pfile, fl_owner_t id)
+{
+	struct nfc_dev *nfc_dev = pfile->private_data;
+
+	if (!nfc_dev)
+		return -ENODEV;
+	/*
+	 * release blocked user thread waiting for pending read during close
+	 */
+	if (!mutex_trylock(&nfc_dev->read_mutex)) {
+		nfc_dev->release_read = true;
+		nfc_dev->nfc_disable_intr(nfc_dev);
+		wake_up(&nfc_dev->read_wq);
+		pr_debug("%s: waiting for release of blocked read\n", __func__);
+		mutex_lock(&nfc_dev->read_mutex);
+		nfc_dev->release_read = false;
+	} else {
+		pr_debug("%s: read thread already released\n", __func__);
+	}
+	mutex_unlock(&nfc_dev->read_mutex);
+	return 0;
+}
+
 int nfc_dev_close(struct inode *inode, struct file *filp)
 {
-	struct nfc_dev *nfc_dev =
-		container_of(inode->i_cdev, struct nfc_dev, c_dev);
+	struct nfc_dev *nfc_dev = NULL;
+	nfc_dev = container_of(inode->i_cdev, struct nfc_dev, c_dev);
 
 	if (!nfc_dev)
 		return -ENODEV;
