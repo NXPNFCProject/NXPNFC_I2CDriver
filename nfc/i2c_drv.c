@@ -256,12 +256,13 @@ ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t count,
 	int ret;
 	struct nfc_dev *nfc_dev = (struct nfc_dev *)filp->private_data;
 
-	if (filp->f_flags & O_NONBLOCK) {
-		pr_err("%s: f_flags has nonblock. try again\n", __func__);
-		return -EAGAIN;
-	}
 	mutex_lock(&nfc_dev->read_mutex);
-	ret = i2c_read(nfc_dev, nfc_dev->read_kbuf, count, 0);
+	if (filp->f_flags & O_NONBLOCK) {
+		ret = i2c_master_recv(nfc_dev->i2c_dev.client, nfc_dev->read_kbuf, count);
+		pr_debug("%s: NONBLOCK read ret = %d\n", __func__, ret);
+	} else {
+		ret = i2c_read(nfc_dev, nfc_dev->read_kbuf, count, 0);
+	}
 	if (ret > 0) {
 		if (copy_to_user(buf, nfc_dev->read_kbuf, ret)) {
 			pr_warn("%s: failed to copy to user space\n", __func__);
