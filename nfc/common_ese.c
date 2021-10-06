@@ -150,7 +150,6 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 {
 	int ret = 0;
 	int timeout = 0;
-	struct file filp;
 	char *rsp = nfc_dev->read_kbuf;
 	struct cold_reset *cold_reset = &nfc_dev->cold_reset;
 	bool nfc_dev_opened = false;
@@ -221,9 +220,7 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 			}
 		} else {
 			/* Read response here as NFC thread is not active */
-			filp.private_data = nfc_dev;
 			if (nfc_dev->interface == PLATFORM_IF_I2C) {
-				filp.f_flags &= ~O_NONBLOCK;
 				ret = nfc_dev->nfc_read(nfc_dev, rsp, 3,
 							timeout);
 				if (!ret)

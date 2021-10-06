@@ -1,7 +1,10 @@
-#
-# Makefile for nfc devices
-#
-obj-$(CONFIG_NXP_NFC_I2C)		+= pn553_i2c.o
-pn553_i2c-objs				:= common.o common_ese.o i2c_drv.o
-#ccflags-y                      += -DDEBUG
+KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 
+all:
+	$(MAKE) -C $(KERNEL_SRC) M=$(shell pwd) modules $(KBUILD_OPTIONS)
+
+modules_install:
+	$(MAKE) INSTALL_MOD_STRIP=1 -C $(KERNEL_SRC) M=$(shell pwd) modules_install
+
+clean:
+	$(MAKE) -C $(KERNEL_SRC) M=$(PWD) clean
