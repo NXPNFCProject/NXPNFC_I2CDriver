@@ -74,9 +74,9 @@
 
 /* Ioctls */
 /* The type should be aligned with MW HAL definitions */
-#define NFC_SET_PWR			_IOW(NFC_MAGIC, 0x01, long)
-#define ESE_SET_PWR			_IOW(NFC_MAGIC, 0x02, long)
-#define ESE_GET_PWR			_IOR(NFC_MAGIC, 0x03, long)
+#define NFC_SET_PWR			_IOW(NFC_MAGIC, 0x01, uint32_t)
+#define ESE_SET_PWR			_IOW(NFC_MAGIC, 0x02, uint32_t)
+#define ESE_GET_PWR			_IOR(NFC_MAGIC, 0x03, uint32_t)
 
 #define DTS_IRQ_GPIO_STR		"nxp,pn544-irq"
 #define DTS_VEN_GPIO_STR		"nxp,pn544-ven"
@@ -196,6 +196,8 @@ struct nfc_dev {
 int nfc_dev_open(struct inode *inode, struct file *filp);
 int nfc_dev_flush(struct file *pfile, fl_owner_t id);
 int nfc_dev_close(struct inode *inode, struct file *filp);
+long nfc_dev_compat_ioctl(struct file *pfile, unsigned int cmd,
+		      unsigned long arg);
 long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg);
 int nfc_parse_dt(struct device *dev, struct platform_configs *nfc_configs,
 		 uint8_t interface);

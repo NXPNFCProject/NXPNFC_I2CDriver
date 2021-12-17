@@ -40,7 +40,9 @@
 #include <linux/delay.h>
 #include <linux/uaccess.h>
 #include <linux/gpio.h>
-
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif
 #include "common_ese.h"
 
 /**
@@ -256,6 +258,10 @@ ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t count,
 	int ret;
 	struct nfc_dev *nfc_dev = (struct nfc_dev *)filp->private_data;
 
+	if (!nfc_dev) {
+		pr_err("%s: device doesn't exist anymore\n", __func__);
+		return -ENODEV;
+	}
 	mutex_lock(&nfc_dev->read_mutex);
 	if (filp->f_flags & O_NONBLOCK) {
 		ret = i2c_master_recv(nfc_dev->i2c_dev.client, nfc_dev->read_kbuf, count);
@@ -282,6 +288,11 @@ ssize_t nfc_i2c_dev_write(struct file *filp, const char __user *buf,
 	if (count > MAX_DL_BUFFER_SIZE)
 		count = MAX_DL_BUFFER_SIZE;
 
+	if (!nfc_dev) {
+		pr_err("%s: device doesn't exist anymore\n", __func__);
+		return -ENODEV;
+	}
+
 	mutex_lock(&nfc_dev->write_mutex);
 	if (copy_from_user(nfc_dev->write_kbuf, buf, count)) {
 		pr_err("%s: failed to copy from user space\n", __func__);
@@ -302,6 +313,9 @@ static const struct file_operations nfc_i2c_dev_fops = {
 	.flush = nfc_dev_flush,
 	.release = nfc_dev_close,
 	.unlocked_ioctl = nfc_dev_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = nfc_dev_compat_ioctl,
+#endif
 };
 
 int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id)
@@ -454,12 +468,18 @@ int nfc_i2c_dev_suspend(struct device *device)
 {
 	struct i2c_client *client = to_i2c_client(device);
 	struct nfc_dev *nfc_dev = i2c_get_clientdata(client);
-	struct i2c_dev *i2c_dev = &nfc_dev->i2c_dev;
+	struct i2c_dev *i2c_dev = NULL;
+	if (!nfc_dev) {
+		pr_err("%s: device doesn't exist anymore\n", __func__);
+		return -ENODEV;
+	}
+	i2c_dev = &nfc_dev->i2c_dev;
 
 	if (device_may_wakeup(&client->dev) && i2c_dev->irq_enabled) {
 		if (!enable_irq_wake(client->irq))
 			i2c_dev->irq_wake_up = true;
 	}
+	pr_debug("%s: irq_wake_up = %d", __func__, i2c_dev->irq_wake_up);
 	return 0;
 }
 
@@ -467,12 +487,18 @@ int nfc_i2c_dev_resume(struct device *device)
 {
 	struct i2c_client *client = to_i2c_client(device);
 	struct nfc_dev *nfc_dev = i2c_get_clientdata(client);
-	struct i2c_dev *i2c_dev = &nfc_dev->i2c_dev;
+	struct i2c_dev *i2c_dev = NULL;
+	if (!nfc_dev) {
+		pr_err("%s: device doesn't exist anymore\n", __func__);
+		return -ENODEV;
+	}
+	i2c_dev = &nfc_dev->i2c_dev;
 
 	if (device_may_wakeup(&client->dev) && i2c_dev->irq_wake_up) {
 		if (!disable_irq_wake(client->irq))
 			i2c_dev->irq_wake_up = false;
 	}
+	pr_debug("%s: irq_wake_up = %d", __func__, i2c_dev->irq_wake_up);
 	return 0;
 }
 

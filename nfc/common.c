@@ -286,6 +286,31 @@ static int nfc_ioctl_power_states(struct nfc_dev *nfc_dev, unsigned long arg)
 	return ret;
 }
 
+#ifdef CONFIG_COMPAT
+/**
+ * nfc_dev_compat_ioctl - used to set or get data from upper layer.
+ * @pfile   file node for opened device.
+ * @cmd     ioctl type from upper layer.
+ * @arg     ioctl arg from upper layer.
+ *
+ * NFC and ESE Device power control, based on the argument value
+ *
+ * Return: -ENOIOCTLCMD if arg is not supported
+ * 0 if Success(or no issue)
+ * 0 or 1 in case of arg is ESE_GET_PWR/ESE_POWER_STATE
+ * and error ret code otherwise
+ */
+long nfc_dev_compat_ioctl(struct file *pfile, unsigned int cmd,
+		      unsigned long arg)
+{
+	int ret = 0;
+	arg = (compat_u64)arg;
+	pr_debug("%s: cmd = %x arg = %zx\n", __func__, cmd, arg);
+	ret = nfc_dev_ioctl(pfile, cmd, arg);
+	return ret;
+}
+#endif
+
 /**
  * nfc_dev_ioctl - used to set or get data from upper layer.
  * @pfile   file node for opened device.

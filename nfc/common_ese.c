@@ -54,7 +54,6 @@ static int send_cold_reset_protection_cmd(struct nfc_dev *nfc_dev,
 	uint8_t *cmd = nfc_dev->write_kbuf;
 	struct cold_reset *cold_reset = &nfc_dev->cold_reset;
 
-	mutex_lock(&nfc_dev->write_mutex);
 	*cmd++ = NCI_PROP_MSG_CMD;
 
 	if (requestType) { /* reset protection */
@@ -84,7 +83,6 @@ static int send_cold_reset_protection_cmd(struct nfc_dev *nfc_dev,
 			 cmd[NCI_HDR_IDX], cmd[NCI_HDR_OID_IDX],
 			 cmd[NCI_PAYLOAD_LEN_IDX]);
 exit:
-	mutex_unlock(&nfc_dev->write_mutex);
 	return ret;
 }
 
@@ -152,7 +150,6 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 	int timeout = 0;
 	char *rsp = nfc_dev->read_kbuf;
 	struct cold_reset *cold_reset = &nfc_dev->cold_reset;
-	bool nfc_dev_opened = false;
 
 	/* check if NFCC not in the FW download or hard reset state */
 	ret = validate_nfc_state_nci(nfc_dev);
@@ -160,10 +157,6 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 		pr_err("%s: invalid cmd\n", __func__);
 		return ret;
 	}
-
-	/* check if NFC is enabled */
-	mutex_lock(&nfc_dev->dev_ref_mutex);
-	nfc_dev_opened = (nfc_dev->dev_ref_count > 0) ? true : false;
 
 	/* check if NFCC not in the FW download or hard reset state */
 	ret = validate_cold_reset_protection_request(cold_reset, arg);
@@ -178,21 +171,23 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 		ret = -EBUSY;
 		goto err;
 	}
-	/* set default value for status as failure */
+
+	/* enable interrupt if not enabled incase when devnode not opened by HAL */
+	nfc_dev->nfc_enable_intr(nfc_dev);
+
+	mutex_lock(&nfc_dev->write_mutex);
+	/* write api has 15ms maximum wait to clear any pending read before */
 	cold_reset->status = -EIO;
 	cold_reset->rsp_pending = true;
-
-	/* enable interrupt before sending cmd, when devnode not opened by HAL */
-	if (!nfc_dev_opened)
-		nfc_dev->nfc_enable_intr(nfc_dev);
-
 	ret = send_cold_reset_protection_cmd(nfc_dev, IS_RST_PROT_REQ(arg));
 	if (ret < 0) {
+		mutex_unlock(&nfc_dev->write_mutex);
+		cold_reset->rsp_pending = false;
 		pr_err("%s: failed to send cold reset/protection cmd\n",
 		       __func__);
-		cold_reset->rsp_pending = false;
 		goto err;
 	}
+
 	ret = 0;
 	/* start the cold reset guard timer */
 	if (IS_CLD_RST_REQ(arg)) {
@@ -200,6 +195,7 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 		if (!(cold_reset->reset_protection && IS_SRC_NFC(arg))) {
 			ret = start_cold_reset_guard_timer(cold_reset);
 			if (ret) {
+				mutex_unlock(&nfc_dev->write_mutex);
 				pr_err("%s: error in mod_timer\n", __func__);
 				goto err;
 			}
@@ -208,28 +204,27 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 
 	timeout = NCI_CMD_RSP_TIMEOUT_MS;
 	do {
+		/* call read api directly if reader thread is not blocked */
+		if (mutex_trylock(&nfc_dev->read_mutex)) {
+			pr_debug("%s: reader thread not pending\n", __func__);
+			ret = nfc_dev->nfc_read(nfc_dev, rsp, 3,
+						timeout);
+			mutex_unlock(&nfc_dev->read_mutex);
+			if (!ret)
+				break;
+			usleep_range(READ_RETRY_WAIT_TIME_US,
+					 READ_RETRY_WAIT_TIME_US + 500);
 		/* Read pending response form the HAL service */
-		if (nfc_dev_opened) {
-			if (!wait_event_interruptible_timeout(
-				    cold_reset->read_wq,
-				    cold_reset->rsp_pending == false,
-				    msecs_to_jiffies(timeout))) {
-				pr_err("%s: cold reset/prot response timeout\n",
-				       __func__);
-				ret = -EAGAIN;
-			}
-		} else {
-			/* Read response here as NFC thread is not active */
-			if (nfc_dev->interface == PLATFORM_IF_I2C) {
-				ret = nfc_dev->nfc_read(nfc_dev, rsp, 3,
-							timeout);
-				if (!ret)
-					break;
-				usleep_range(READ_RETRY_WAIT_TIME_US,
-					     READ_RETRY_WAIT_TIME_US + 500);
-			}
+		} else if (!wait_event_interruptible_timeout(
+					cold_reset->read_wq,
+					cold_reset->rsp_pending == false,
+					msecs_to_jiffies(timeout))) {
+			pr_err("%s: cold reset/prot response timeout\n", __func__);
+			ret = -EAGAIN;
 		}
 	} while (ret == -ERESTARTSYS || ret == -EFAULT);
+	mutex_unlock(&nfc_dev->write_mutex);
+
 	timeout = ESE_CLD_RST_REBOOT_GUARD_TIME_MS;
 	if (ret == 0) { /* success case */
 		ret = cold_reset->status;
