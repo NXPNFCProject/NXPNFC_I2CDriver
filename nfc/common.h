@@ -30,7 +30,7 @@
 #define CLASS_NAME			"nfc"
 
 /* NFC character device name, this will be in /dev/ */
-#define NFC_CHAR_DEV_NAME		"pn553"
+#define NFC_CHAR_DEV_NAME		"nxp-nci"
 
 /* NCI packet details */
 #define NCI_CMD				(0x20)
@@ -78,9 +78,9 @@
 #define ESE_SET_PWR			_IOW(NFC_MAGIC, 0x02, uint32_t)
 #define ESE_GET_PWR			_IOR(NFC_MAGIC, 0x03, uint32_t)
 
-#define DTS_IRQ_GPIO_STR		"nxp,pn544-irq"
-#define DTS_VEN_GPIO_STR		"nxp,pn544-ven"
-#define DTS_FWDN_GPIO_STR		"nxp,pn544-fw-dwnld"
+#define DTS_IRQ_GPIO_STR		"nxp,sn-irq"
+#define DTS_VEN_GPIO_STR		"nxp,sn-ven-rstn"
+#define DTS_FWDN_GPIO_STR		"nxp,sn-dwl-req"
 
 enum nfcc_ioctl_request {
 	/* NFC disable request with VEN LOW */

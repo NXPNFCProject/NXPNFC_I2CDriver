@@ -323,25 +323,25 @@ int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	int ret = 0;
 	struct nfc_dev *nfc_dev = NULL;
 	struct i2c_dev *i2c_dev = NULL;
-	struct platform_configs nfc_configs;
-	struct platform_gpio *nfc_gpio = &nfc_configs.gpio;
-
+	struct platform_configs *nfc_configs = NULL;
+	struct platform_gpio *nfc_gpio = NULL;
 	pr_debug("%s: enter\n", __func__);
+	nfc_dev = kzalloc(sizeof(struct nfc_dev), GFP_KERNEL);
+	if (nfc_dev == NULL) {
+		ret = -ENOMEM;
+		goto err;
+	}
+	nfc_configs = &nfc_dev->configs;
+	nfc_gpio = &nfc_configs->gpio;
 	/* retrieve details of gpios from dt */
-	ret = nfc_parse_dt(&client->dev, &nfc_configs, PLATFORM_IF_I2C);
+	ret = nfc_parse_dt(&client->dev,nfc_configs, PLATFORM_IF_I2C);
 	if (ret) {
 		pr_err("%s: failed to parse dt\n", __func__);
 		goto err;
 	}
-
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		pr_err("%s: need I2C_FUNC_I2C\n", __func__);
 		ret = -ENODEV;
-		goto err;
-	}
-	nfc_dev = kzalloc(sizeof(struct nfc_dev), GFP_KERNEL);
-	if (nfc_dev == NULL) {
-		ret = -ENOMEM;
 		goto err;
 	}
 	nfc_dev->read_kbuf = kzalloc(MAX_NCI_BUFFER_SIZE, GFP_DMA | GFP_KERNEL);
@@ -380,11 +380,6 @@ int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		pr_err("%s: unable to request nfc firm downl gpio [%d]\n",
 		       __func__, nfc_gpio->dwl_req);
 	}
-
-	/* copy the retrieved gpio details from DT */
-	memcpy(&nfc_dev->configs, &nfc_configs,
-	       sizeof(struct platform_configs));
-
 	/* init mutex and queues */
 	init_waitqueue_head(&nfc_dev->read_wq);
 	mutex_init(&nfc_dev->read_mutex);
