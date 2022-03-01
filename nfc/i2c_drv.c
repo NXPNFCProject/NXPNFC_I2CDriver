@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright (C) 2013-2021 NXP
+ * Copyright (C) 2013-2022 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -225,8 +225,8 @@ int i2c_write(struct nfc_dev *nfc_dev, const char *buf, size_t count,
 	for (retry_cnt = 1; retry_cnt <= MAX_WRITE_IRQ_COUNT; retry_cnt++) {
 		if (gpio_get_value(nfc_gpio->irq)) {
 			pr_warn("%s: irq high during write, wait\n", __func__);
-			usleep_range(NFC_WRITE_IRQ_WAIT_TIME_US,
-				     NFC_WRITE_IRQ_WAIT_TIME_US + 100);
+			usleep_range(WRITE_RETRY_WAIT_TIME_US,
+				     WRITE_RETRY_WAIT_TIME_US + 100);
 		} else {
 			break;
 		}
@@ -337,12 +337,12 @@ int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	ret = nfc_parse_dt(&client->dev,nfc_configs, PLATFORM_IF_I2C);
 	if (ret) {
 		pr_err("%s: failed to parse dt\n", __func__);
-		goto err;
+		goto err_free_nfc_dev;
 	}
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		pr_err("%s: need I2C_FUNC_I2C\n", __func__);
 		ret = -ENODEV;
-		goto err;
+		goto err_free_nfc_dev;
 	}
 	nfc_dev->read_kbuf = kzalloc(MAX_NCI_BUFFER_SIZE, GFP_DMA | GFP_KERNEL);
 	if (!nfc_dev->read_kbuf) {
