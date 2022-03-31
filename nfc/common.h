@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019-2021 NXP
+ * Copyright (C) 2019-2022 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,10 +64,8 @@
 #define NCI_CMD_RSP_TIMEOUT_MS		(2000)
 /* Time to wait for NFCC to be ready again after any change in the GPIO */
 #define NFC_GPIO_SET_WAIT_TIME_US	(10000)
-/* Time to wait for IRQ low during write 5*3ms */
-#define NFC_WRITE_IRQ_WAIT_TIME_US	(3000)
-/* Time to wait before retrying i2c/I3C writes */
-#define WRITE_RETRY_WAIT_TIME_US	(1000)
+/* Time to wait before retrying writes */
+#define WRITE_RETRY_WAIT_TIME_US	(3000)
 /* Time to wait before retrying read for some specific usecases */
 #define READ_RETRY_WAIT_TIME_US		(3500)
 #define NFC_MAGIC			(0xE9)
