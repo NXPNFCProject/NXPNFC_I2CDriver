@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019-2021 NXP
+ * Copyright (C) 2019-2022 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -410,10 +410,6 @@ int nfc_dev_close(struct inode *inode, struct file *filp)
 	if (nfc_dev->dev_ref_count == 1) {
 		nfc_dev->nfc_disable_intr(nfc_dev);
 		set_valid_gpio(nfc_dev->configs.gpio.dwl_req, 0);
-	}
-	if (nfc_dev->dev_ref_count > 0)
-		nfc_dev->dev_ref_count = nfc_dev->dev_ref_count - 1;
-	else {
 		/*
 		 * Use "ESE_RST_PROT_DIS" as argument
 		 * if eSE calls flow is via NFC driver
@@ -421,6 +417,9 @@ int nfc_dev_close(struct inode *inode, struct file *filp)
 		 */
 		nfc_ese_pwr(nfc_dev, ESE_RST_PROT_DIS_NFC);
 	}
+	if (nfc_dev->dev_ref_count > 0)
+		nfc_dev->dev_ref_count = nfc_dev->dev_ref_count - 1;
+
 	filp->private_data = NULL;
 
 	mutex_unlock(&nfc_dev->dev_ref_mutex);
