@@ -64,6 +64,7 @@ long sn1xx_nfc_ese_ioctl(struct nfc_dev *nfc_dev,  unsigned int cmd, unsigned lo
     return ret;
 }
 
+EXPORT_SYMBOL(sn1xx_nfc_ese_ioctl);
 /*
  * sn100_nfc_pwr() - power control/firmware download
  * @filp:    pointer to the file descriptor

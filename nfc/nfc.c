@@ -200,6 +200,8 @@ void nfc_ese_acquire(struct nfc_dev *nfc_dev)
     pr_debug("%s: ese acquired\n", __func__);
 }
 
+EXPORT_SYMBOL(nfc_ese_acquire);
+
 /* Callback to release the  embedded secure element
  * it should be released, after completion of any
  * operation (usage or reset) of ese.
@@ -209,6 +211,8 @@ void nfc_ese_release(struct nfc_dev *nfc_dev)
     mutex_unlock(&nfc_dev->ese_status_mutex);
     pr_debug("%s: ese released\n", __func__);
 }
+
+EXPORT_SYMBOL(nfc_ese_release);
 
 static int nfc_dev_open(struct inode *inode, struct file *filp)
 {
@@ -256,11 +260,11 @@ static int nfc_parse_dt(struct device *dev,
 
     data->irq_gpio = of_get_named_gpio(np, "nxp,pn544-irq", 0);
     if ((!gpio_is_valid(data->irq_gpio)))
-            return -EINVAL;
+            return data->irq_gpio;
 
     data->ven_gpio = of_get_named_gpio(np, "nxp,pn544-ven", 0);
     if ((!gpio_is_valid(data->ven_gpio)))
-            return -EINVAL;
+            return data->ven_gpio;
 
     data->firm_gpio = of_get_named_gpio(np, "nxp,pn544-fw-dwnld", 0);
     if ((!gpio_is_valid(data->firm_gpio)))

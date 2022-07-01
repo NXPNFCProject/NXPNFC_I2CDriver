@@ -714,6 +714,8 @@ long pn8xt_nfc_ese_ioctl(struct nfc_dev *nfc_dev, unsigned int cmd, unsigned lon
     return ret;
 }
 
+EXPORT_SYMBOL(pn8xt_nfc_ese_ioctl);
+
 long pn8xt_nfc_ioctl(struct nfc_dev *nfc_dev, unsigned int cmd, unsigned long arg)
 {
     long ret = 0;
