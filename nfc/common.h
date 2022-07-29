@@ -27,7 +27,7 @@
 /* Max device count for this driver */
 #define DEV_COUNT			1
 /* i2c device class */
-#define CLASS_NAME			"nfc"
+#define CLASS_NAME			"nxpnfc"
 
 /* NFC character device name, this will be in /dev/ */
 #define NFC_CHAR_DEV_NAME		"nxp-nci"

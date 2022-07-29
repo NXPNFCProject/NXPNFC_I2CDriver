@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (C) 2020-2021 NXP
+ * Copyright (C) 2020-2022 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -135,6 +135,7 @@ static int validate_cold_reset_protection_request(struct cold_reset *cold_reset,
 			   IS_SRC(arg, cold_reset->rst_prot_src)) {
 			pr_debug("%s: enable reset protection from same src\n",
 				 __func__);
+			ret = -EINVAL;
 		} else {
 			pr_err("%s: operation not permitted\n", __func__);
 			ret = -EPERM;
@@ -161,7 +162,6 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 	/* check if NFCC not in the FW download or hard reset state */
 	ret = validate_cold_reset_protection_request(cold_reset, arg);
 	if (ret < 0) {
-		pr_err("%s: invalid cmd\n", __func__);
 		goto err;
 	}
 
