@@ -131,7 +131,7 @@ static ssize_t nfc_dev_read(struct file *filp, char __user *buf,
             nfc_disable_irq(nfc_dev);
             if (gpio_get_value(nfc_dev->irq_gpio))
                 break;
-            pr_warning("%s: spurious interrupt detected\n", __func__);
+            pr_warn("%s: spurious interrupt detected\n", __func__);
         }
     }
     memset(tmp, 0x00, count);
@@ -151,7 +151,7 @@ static ssize_t nfc_dev_read(struct file *filp, char __user *buf,
         goto err;
     }
     if (copy_to_user(buf, tmp, ret)) {
-        pr_warning("%s : failed to copy to user space\n", __func__);
+        pr_warn("%s : failed to copy to user space\n", __func__);
         ret = -EFAULT;
         goto err;
     }

@@ -105,14 +105,14 @@ static int signal_handler(pn8xt_access_st_t state, long nfc_pid)
 {
     int sigret = 0;
     pid_t pid;
-    struct siginfo sinfo;
+    struct kernel_siginfo sinfo;
     struct task_struct *task;
 
     if(nfc_pid <= 0) {
         pr_err("%s: invalid nfc service pid %ld\n", __func__, nfc_pid);
         return 0;
     }
-    memset(&sinfo, 0, sizeof(struct siginfo));
+    memset(&sinfo, 0, sizeof(struct kernel_siginfo));
     sinfo.si_signo = SIG_NFC;
     sinfo.si_code = SI_QUEUE;
     sinfo.si_int = state;
@@ -121,7 +121,7 @@ static int signal_handler(pn8xt_access_st_t state, long nfc_pid)
     task = pid_task(find_vpid(pid), PIDTYPE_PID);
     if(task) {
         pr_info("%s: %s\n", __func__, task->comm);
-        sigret = force_sig_info(SIG_NFC, &sinfo, task);
+        sigret =  send_sig_info(SIG_NFC, &sinfo, task);
         if(sigret < 0) {
             pr_err("%s: send_sig_info failed, sigret %d\n", __func__, sigret);
             return -1;
