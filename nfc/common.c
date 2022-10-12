@@ -127,7 +127,7 @@ int configure_gpio(unsigned int gpio, int flag)
 
 		if (ret) {
 			pr_err("%s: unable to set direction for nfc gpio [%d]\n",
-			       __func__, gpio);
+			     __func__, gpio);
 			gpio_free(gpio);
 			return ret;
 		}
@@ -301,10 +301,11 @@ static int nfc_ioctl_power_states(struct nfc_dev *nfc_dev, unsigned long arg)
  * and error ret code otherwise
  */
 long nfc_dev_compat_ioctl(struct file *pfile, unsigned int cmd,
-		      unsigned long arg)
+			  unsigned long arg)
 {
 	int ret = 0;
-	arg = (compat_u64)arg;
+
+	arg = (compat_u64) arg;
 	pr_debug("%s: cmd = %x arg = %zx\n", __func__, cmd, arg);
 	ret = nfc_dev_ioctl(pfile, cmd, arg);
 	return ret;
@@ -337,6 +338,19 @@ long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg)
 	case NFC_SET_PWR:
 		ret = nfc_ioctl_power_states(nfc_dev, arg);
 		break;
+	case NFC_SET_RESET_READ_PENDING:
+		if (arg == NFC_SET_READ_PENDING) {
+			nfc_dev->cold_reset.is_nfc_read_pending = true;
+                        /* Set default NFC state as NCI for Nfc read pending request */
+			nfc_dev->nfc_state = NFC_STATE_NCI;
+		}
+		else if (arg == NFC_RESET_READ_PENDING){
+			nfc_dev->cold_reset.is_nfc_read_pending = false;
+		}
+		else {
+			ret = -EINVAL;
+		}
+		break;
 	case ESE_SET_PWR:
 		ret = nfc_ese_pwr(nfc_dev, arg);
 		break;
@@ -353,6 +367,7 @@ long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg)
 int nfc_dev_open(struct inode *inode, struct file *filp)
 {
 	struct nfc_dev *nfc_dev = NULL;
+
 	nfc_dev = container_of(inode->i_cdev, struct nfc_dev, c_dev);
 
 	if (!nfc_dev)
@@ -400,6 +415,7 @@ int nfc_dev_flush(struct file *pfile, fl_owner_t id)
 int nfc_dev_close(struct inode *inode, struct file *filp)
 {
 	struct nfc_dev *nfc_dev = NULL;
+
 	nfc_dev = container_of(inode->i_cdev, struct nfc_dev, c_dev);
 
 	if (!nfc_dev)
@@ -415,7 +431,9 @@ int nfc_dev_close(struct inode *inode, struct file *filp)
 		 * if eSE calls flow is via NFC driver
 		 * i.e. direct calls from SPI HAL to NFC driver
 		 */
+                mutex_unlock(&nfc_dev->dev_ref_mutex);
 		nfc_ese_pwr(nfc_dev, ESE_RST_PROT_DIS_NFC);
+		mutex_lock(&nfc_dev->dev_ref_mutex);
 	}
 	if (nfc_dev->dev_ref_count > 0)
 		nfc_dev->dev_ref_count = nfc_dev->dev_ref_count - 1;

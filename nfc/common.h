@@ -51,7 +51,6 @@
 #define MAX_DL_BUFFER_SIZE		(DL_HDR_LEN + DL_CRC_LEN + \
 					MAX_DL_PAYLOAD_LEN)
 
-
 /* Retry count for normal write */
 #define NO_RETRY			(1)
 /* Maximum retry count for standby writes */
@@ -72,9 +71,10 @@
 
 /* Ioctls */
 /* The type should be aligned with MW HAL definitions */
-#define NFC_SET_PWR			_IOW(NFC_MAGIC, 0x01, uint32_t)
-#define ESE_SET_PWR			_IOW(NFC_MAGIC, 0x02, uint32_t)
-#define ESE_GET_PWR			_IOR(NFC_MAGIC, 0x03, uint32_t)
+#define NFC_SET_PWR						_IOW(NFC_MAGIC, 0x01, uint32_t)
+#define ESE_SET_PWR						_IOW(NFC_MAGIC, 0x02, uint32_t)
+#define ESE_GET_PWR						_IOR(NFC_MAGIC, 0x03, uint32_t)
+#define NFC_SET_RESET_READ_PENDING				_IOW(NFC_MAGIC, 0x04, uint32_t)
 
 #define DTS_IRQ_GPIO_STR		"nxp,sn-irq"
 #define DTS_VEN_GPIO_STR		"nxp,sn-ven-rstn"
@@ -95,6 +95,11 @@ enum nfcc_ioctl_request {
 	NFC_VEN_FORCED_HARD_RESET,
 	/* request for firmware download gpio LOW */
 	NFC_FW_DWL_LOW,
+};
+
+enum nfc_read_pending {
+	NFC_RESET_READ_PENDING,
+	NFC_SET_READ_PENDING,
 };
 
 /* nfc platform interface type */
@@ -154,6 +159,7 @@ struct cold_reset {
 	uint8_t rst_prot_src;	/* reset protection source (SPI, NFC) */
 	struct timer_list timer;
 	wait_queue_head_t read_wq;
+	bool is_nfc_read_pending;
 };
 
 /* Device specific structure */
@@ -195,7 +201,7 @@ int nfc_dev_open(struct inode *inode, struct file *filp);
 int nfc_dev_flush(struct file *pfile, fl_owner_t id);
 int nfc_dev_close(struct inode *inode, struct file *filp);
 long nfc_dev_compat_ioctl(struct file *pfile, unsigned int cmd,
-		      unsigned long arg);
+			  unsigned long arg);
 long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg);
 int nfc_parse_dt(struct device *dev, struct platform_configs *nfc_configs,
 		 uint8_t interface);
