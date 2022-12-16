@@ -75,10 +75,15 @@
 #define ESE_SET_PWR						_IOW(NFC_MAGIC, 0x02, uint32_t)
 #define ESE_GET_PWR						_IOR(NFC_MAGIC, 0x03, uint32_t)
 #define NFC_SET_RESET_READ_PENDING				_IOW(NFC_MAGIC, 0x04, uint32_t)
+#define NFC_GET_GPIO_STATUS					_IOR(NFC_MAGIC, 0x05, uint32_t)
 
 #define DTS_IRQ_GPIO_STR		"nxp,sn-irq"
 #define DTS_VEN_GPIO_STR		"nxp,sn-ven-rstn"
 #define DTS_FWDN_GPIO_STR		"nxp,sn-dwl-req"
+/* Each GPIO occupies consecutive two bits */
+#define GPIO_POS_SHIFT_VAL 2
+/* Two bits to indicate GPIO status (Invalid(-2), Set(1) or Reset(0)) */
+#define GPIO_STATUS_MASK_BITS 3
 
 enum nfcc_ioctl_request {
 	/* NFC disable request with VEN LOW */
