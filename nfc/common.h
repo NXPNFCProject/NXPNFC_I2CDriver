@@ -57,7 +57,7 @@
 #define MAX_RETRY_COUNT			(3)
 #define MAX_WRITE_IRQ_COUNT		(5)
 #define MAX_IRQ_WAIT_TIME		(90)
-#define WAKEUP_SRC_TIMEOUT		(2000)
+#define WAKEUP_SRC_TIMEOUT		(100)
 
 /* command response timeout */
 #define NCI_CMD_RSP_TIMEOUT_MS		(2000)
