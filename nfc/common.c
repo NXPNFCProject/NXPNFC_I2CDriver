@@ -242,12 +242,14 @@ static int nfc_ioctl_power_states(struct nfc_dev *nfc_dev, unsigned long arg)
 		set_valid_gpio(nfc_gpio->dwl_req, 0);
 		gpio_set_ven(nfc_dev, 0);
 		nfc_dev->nfc_ven_enabled = false;
+		nfc_dev->nfc_state = NFC_STATE_NCI;
 	} else if (arg == NFC_POWER_ON) {
 		nfc_dev->nfc_enable_intr(nfc_dev);
 		set_valid_gpio(nfc_gpio->dwl_req, 0);
 
 		gpio_set_ven(nfc_dev, 1);
 		nfc_dev->nfc_ven_enabled = true;
+		nfc_dev->nfc_state = NFC_STATE_NCI;
 	} else if (arg == NFC_FW_DWL_VEN_TOGGLE) {
 		/*
 		 * We are switching to download Mode, toggle the enable pin
