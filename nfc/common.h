@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019-2022 NXP
+ * Copyright (C) 2019-2023 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -57,7 +57,7 @@
 #define MAX_RETRY_COUNT			(3)
 #define MAX_WRITE_IRQ_COUNT		(5)
 #define MAX_IRQ_WAIT_TIME		(90)
-#define WAKEUP_SRC_TIMEOUT		(2000)
+#define WAKEUP_SRC_TIMEOUT		(100)
 
 /* command response timeout */
 #define NCI_CMD_RSP_TIMEOUT_MS		(2000)
