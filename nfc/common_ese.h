@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (C) 2020-2021 NXP
+ * Copyright 2020-2021, 2024 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -73,22 +73,20 @@ enum ese_ioctl_request {
 #define IS_SRC_SPI(arg)			IS_SRC(arg, SRC_SPI)
 #define IS_SRC_NFC(arg)			IS_SRC(arg, SRC_NFC)
 #define IS_SRC_OTHER(arg)		IS_SRC(arg, SRC_OTHER)
-#define IS_SRC_VALID(arg)		(IS_SRC_SPI(arg) || \
-					IS_SRC_NFC(arg) ||  \
-					IS_SRC_OTHER(arg))
-#define IS_SRC_VALID_PROT(arg)		(IS_SRC_SPI(arg) || \
-					IS_SRC_NFC(arg))
+#define IS_SRC_VALID(arg) \
+	(IS_SRC_SPI(arg) || IS_SRC_NFC(arg) || IS_SRC_OTHER(arg))
+#define IS_SRC_VALID_PROT(arg) (IS_SRC_SPI(arg) || IS_SRC_NFC(arg))
 
 #define IS_RST(arg, type)		((arg & 0xF) == type)
 #define IS_CLD_RST_REQ(arg)		IS_RST(arg, ESE_CLD_RST)
 #define IS_RST_PROT_EN_REQ(arg)		IS_RST(arg, ESE_RST_PROT_EN)
 #define IS_RST_PROT_DIS_REQ(arg)	IS_RST(arg, ESE_RST_PROT_DIS)
-#define IS_RST_PROT_REQ(arg)		(IS_RST_PROT_EN_REQ(arg) || \
-					IS_RST_PROT_DIS_REQ(arg))
+#define IS_RST_PROT_REQ(arg) \
+	(IS_RST_PROT_EN_REQ(arg) || IS_RST_PROT_DIS_REQ(arg))
 /* This macro evaluates to 1 if prop cmd response is received */
-#define IS_PROP_CMD_RSP(buf)		((buf[0] == NCI_PROP_MSG_RSP) && \
-					((buf[1] == CLD_RST_OID) || \
-					(buf[1] == RST_PROT_OID)))
+#define IS_PROP_CMD_RSP(buf) \
+	((buf[0] == NCI_PROP_MSG_RSP) && \
+	 ((buf[1] == CLD_RST_OID) || (buf[1] == RST_PROT_OID)))
 
 void wakeup_on_prop_rsp(struct nfc_dev *nfc_dev, uint8_t *buf);
 int nfc_ese_pwr(struct nfc_dev *nfc_dev, unsigned long arg);

@@ -4,5 +4,11 @@ nfc_i2c-y := common.o \
              common_ese.o \
              i2c_drv.o
 
-ccflags-y += -DDYNAMIC_DEBUG_MODULE
+ifdef CONFIG_NXP_NFC_VBAT_MONITOR
+nfc_i2c-y += nfc_vbat_monitor.o
+endif
 
+ccflags-y += -DDYNAMIC_DEBUG_MODULE
+ifdef CONFIG_NXP_NFC_VBAT_MONITOR
+ccflags-y += -DCONFIG_NXP_NFC_VBAT_MONITOR
+endif

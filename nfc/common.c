@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019-2022 NXP
+ * Copyright 2019-2022, 2024 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/delay.h>
+#include <linux/interrupt.h>
 
 #include "common_ese.h"
 
@@ -47,6 +48,17 @@ int nfc_parse_dt(struct device *dev, struct platform_configs *nfc_configs,
 			return nfc_gpio->irq;
 		}
 		pr_info("%s: irq %d\n", __func__, nfc_gpio->irq);
+#if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
+		nfc_gpio->vbat_irq = -EINVAL;
+		nfc_gpio->vbat_irq =
+			of_get_named_gpio(np, DTS_NFC_VBAT_MONITOR_STR, 0);
+		if ((!gpio_is_valid(nfc_gpio->vbat_irq))) {
+			pr_err("%s: vbat_irq gpio invalid %d\n", __func__,
+			       nfc_gpio->vbat_irq);
+			return nfc_gpio->vbat_irq;
+		}
+		pr_info("%s: vbat gpio %d\n", __func__, nfc_gpio->vbat_irq);
+#endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
 	}
 	nfc_gpio->ven = of_get_named_gpio(np, DTS_VEN_GPIO_STR, 0);
 	if ((!gpio_is_valid(nfc_gpio->ven))) {
@@ -58,7 +70,6 @@ int nfc_parse_dt(struct device *dev, struct platform_configs *nfc_configs,
 	if ((!gpio_is_valid(nfc_gpio->dwl_req)))
 		pr_warn("%s: dwl_req gpio invalid %d\n", __func__,
 			nfc_gpio->dwl_req);
-
 	pr_info("%s: %d, %d, %d\n", __func__, nfc_gpio->irq, nfc_gpio->ven,
 		nfc_gpio->dwl_req);
 	return 0;
@@ -126,7 +137,8 @@ int configure_gpio(unsigned int gpio, int flag)
 		}
 
 		if (ret) {
-			pr_err("%s: unable to set direction for nfc gpio [%d]\n", __func__, gpio);
+			pr_err("%s: unable to set direction for nfc gpio [%d]\n",
+			       __func__, gpio);
 			gpio_free(gpio);
 			return ret;
 		}
@@ -159,7 +171,10 @@ void gpio_free_all(struct nfc_dev *nfc_dev)
 
 	if (gpio_is_valid(nfc_gpio->irq))
 		gpio_free(nfc_gpio->irq);
-
+#if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
+	if (gpio_is_valid(nfc_gpio->vbat_irq))
+		gpio_free(nfc_gpio->vbat_irq);
+#endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
 	if (gpio_is_valid(nfc_gpio->ven))
 		gpio_free(nfc_gpio->ven);
 }
@@ -244,9 +259,10 @@ static int nfc_gpio_info(struct nfc_dev *nfc_dev, unsigned long arg)
 		value = get_valid_gpio(gpio_no);
 		if (value < 0)
 			value = -2;
-		gpios_status |= (value & GPIO_STATUS_MASK_BITS)<<(GPIO_POS_SHIFT_VAL*i);
+		gpios_status |= (value & GPIO_STATUS_MASK_BITS)
+				<< (GPIO_POS_SHIFT_VAL * i);
 	}
-	ret = copy_to_user((uint32_t *) arg, &gpios_status, sizeof(value));
+	ret = copy_to_user((uint32_t *)arg, &gpios_status, sizeof(value));
 	if (ret < 0) {
 		pr_err("%s : Unable to copy data from kernel space to user space");
 		return -EFAULT;
@@ -345,7 +361,7 @@ long nfc_dev_compat_ioctl(struct file *pfile, unsigned int cmd,
 {
 	int ret = 0;
 
-	arg = (compat_u64) arg;
+	arg = (compat_u64)arg;
 	pr_debug("%s: cmd = %x arg = %zx\n", __func__, cmd, arg);
 	ret = nfc_dev_ioctl(pfile, cmd, arg);
 	return ret;

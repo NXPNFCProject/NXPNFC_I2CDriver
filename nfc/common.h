@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019-2023 NXP
+ * Copyright 2019-2024 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 #include <linux/cdev.h>
 
 #include "i2c_drv.h"
+#include "nfc_vbat_monitor.h"
 
 /* Max device count for this driver */
 #define DEV_COUNT			1
@@ -57,8 +58,7 @@
 #else
   #define MAX_DL_PAYLOAD_LEN    (550)
 #endif
-#define MAX_DL_BUFFER_SIZE		(DL_HDR_LEN + DL_CRC_LEN + \
-					MAX_DL_PAYLOAD_LEN)
+#define MAX_DL_BUFFER_SIZE (DL_HDR_LEN + DL_CRC_LEN + MAX_DL_PAYLOAD_LEN)
 
 /* Retry count for normal write */
 #define NO_RETRY			(1)
@@ -155,6 +155,7 @@ enum gpio_values {
 /* NFC GPIO variables */
 struct platform_gpio {
 	unsigned int irq;
+	unsigned int vbat_irq;
 	unsigned int ven;
 	unsigned int dwl_req;
 };
@@ -201,6 +202,9 @@ struct nfc_dev {
 	};
 	struct platform_configs configs;
 	struct cold_reset cold_reset;
+#if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
+	struct nfc_vbat_monitor nfc_vbat_monitor;
+#endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
 
 	/* function pointers for the common i2c functionality */
 	int (*nfc_read)(struct nfc_dev *dev, char *buf, size_t count,
@@ -227,4 +231,9 @@ int configure_gpio(unsigned int gpio, int flag);
 void gpio_set_ven(struct nfc_dev *nfc_dev, int value);
 void gpio_free_all(struct nfc_dev *nfc_dev);
 int validate_nfc_state_nci(struct nfc_dev *nfc_dev);
+#if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
+int nfc_vbat_monitor_init(struct nfc_dev *nfc_dev,
+			  struct platform_gpio *nfc_gpio,
+			  struct i2c_client *client);
+#endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
 #endif /* _COMMON_H_ */

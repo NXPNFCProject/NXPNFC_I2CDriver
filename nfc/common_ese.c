@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (C) 2020-2022 NXP
+ * Copyright 2020-2022, 2024 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -162,9 +162,8 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 
 	/* check if NFCC not in the FW download or hard reset state */
 	ret = validate_cold_reset_protection_request(cold_reset, arg);
-	if (ret < 0) {
+	if (ret < 0)
 		goto err;
-	}
 
 	/* check if cold reset already in progress */
 	if (IS_CLD_RST_REQ(arg) && cold_reset->in_progress) {
@@ -207,10 +206,10 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 	mutex_lock(&nfc_dev->dev_ref_mutex);
 	do {
 		if (nfc_dev->cold_reset.is_nfc_read_pending) {
-			if (!wait_event_interruptible_timeout
-			    (cold_reset->read_wq,
-			     cold_reset->rsp_pending == false,
-			     msecs_to_jiffies(timeout))) {
+			if (!wait_event_interruptible_timeout(
+				    cold_reset->read_wq,
+				    cold_reset->rsp_pending == false,
+				    msecs_to_jiffies(timeout))) {
 				pr_err("%s: cold reset/prot response timeout\n",
 				       __func__);
 				if (retry_cnt <= 1) {
@@ -239,12 +238,13 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 		if (IS_RST_PROT_REQ(arg)) {
 			cold_reset->reset_protection = IS_RST_PROT_EN_REQ(arg);
 			cold_reset->rst_prot_src = IS_RST_PROT_EN_REQ(arg) ?
-			    GET_SRC(arg) : SRC_NONE;
+							   GET_SRC(arg) :
+							   SRC_NONE;
 			/* wait for reboot guard timer */
 		} else {
-			if (wait_event_interruptible_timeout
-			    (cold_reset->read_wq, true,
-			     msecs_to_jiffies(timeout)) == 0) {
+			if (wait_event_interruptible_timeout(
+				    cold_reset->read_wq, true,
+				    msecs_to_jiffies(timeout)) == 0) {
 				pr_info("%s: reboot guard timer timeout\n",
 					__func__);
 			}

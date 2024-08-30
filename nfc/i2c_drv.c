@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright (C) 2013-2022 NXP
+ * Copyright 2013-2022, 2024 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,6 +44,7 @@
 #include <linux/compat.h>
 #endif
 #include "common_ese.h"
+#include "nfc_vbat_monitor.h"
 
 /**
  * i2c_disable_irq()
@@ -146,6 +147,16 @@ int i2c_read(struct nfc_dev *nfc_dev, char *buf, size_t count, int timeout)
 					}
 				}
 			}
+#if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
+			if (nfc_dev->nfc_vbat_monitor.vbat_monitor_status) {
+				pr_debug("%s: NFC recovering  state\n",
+					 __func__);
+				nfc_dev->nfc_vbat_monitor.vbat_monitor_status =
+					false;
+				ret = -ENOTCONN;
+				goto err;
+			}
+#endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
 			i2c_disable_irq(nfc_dev);
 
 			if (gpio_get_value(nfc_gpio->irq))
@@ -264,7 +275,8 @@ ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t count,
 	}
 	mutex_lock(&nfc_dev->read_mutex);
 	if (filp->f_flags & O_NONBLOCK) {
-		ret = i2c_master_recv(nfc_dev->i2c_dev.client, nfc_dev->read_kbuf, count);
+		ret = i2c_master_recv(nfc_dev->i2c_dev.client,
+				      nfc_dev->read_kbuf, count);
 		pr_debug("%s: NONBLOCK read ret = %d\n", __func__, ret);
 	} else {
 		ret = i2c_read(nfc_dev, nfc_dev->read_kbuf, count, 0);
@@ -325,6 +337,7 @@ int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	struct i2c_dev *i2c_dev = NULL;
 	struct platform_configs *nfc_configs = NULL;
 	struct platform_gpio *nfc_gpio = NULL;
+
 	pr_debug("%s: enter\n", __func__);
 	nfc_dev = kzalloc(sizeof(struct nfc_dev), GFP_KERNEL);
 	if (nfc_dev == NULL) {
@@ -334,7 +347,7 @@ int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	nfc_configs = &nfc_dev->configs;
 	nfc_gpio = &nfc_configs->gpio;
 	/* retrieve details of gpios from dt */
-	ret = nfc_parse_dt(&client->dev,nfc_configs, PLATFORM_IF_I2C);
+	ret = nfc_parse_dt(&client->dev, nfc_configs, PLATFORM_IF_I2C);
 	if (ret) {
 		pr_err("%s: failed to parse dt\n", __func__);
 		goto err_free_nfc_dev;
@@ -402,6 +415,13 @@ int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		pr_err("%s: request_irq failed\n", __func__);
 		goto err_nfc_misc_unregister;
 	}
+#if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
+	ret = nfc_vbat_monitor_init(nfc_dev, nfc_gpio, client);
+	if (ret) {
+		pr_err("%s: nfcc vbat monitor init failed, ret: %d\n", __func__, ret);
+		goto err_nfc_misc_unregister;
+	}
+#endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
 	i2c_disable_irq(nfc_dev);
 	gpio_set_ven(nfc_dev, 1);
 	gpio_set_ven(nfc_dev, 0);
@@ -449,6 +469,9 @@ int nfc_i2c_dev_remove(struct i2c_client *client)
 	}
 	device_init_wakeup(&client->dev, false);
 	free_irq(client->irq, nfc_dev);
+#if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
+	free_irq(nfc_dev->nfc_vbat_monitor.irq_num, nfc_dev);
+#endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
 	nfc_misc_unregister(nfc_dev, DEV_COUNT);
 	mutex_destroy(&nfc_dev->read_mutex);
 	mutex_destroy(&nfc_dev->write_mutex);
@@ -464,6 +487,7 @@ int nfc_i2c_dev_suspend(struct device *device)
 	struct i2c_client *client = to_i2c_client(device);
 	struct nfc_dev *nfc_dev = i2c_get_clientdata(client);
 	struct i2c_dev *i2c_dev = NULL;
+
 	if (!nfc_dev) {
 		pr_err("%s: device doesn't exist anymore\n", __func__);
 		return -ENODEV;
@@ -474,6 +498,10 @@ int nfc_i2c_dev_suspend(struct device *device)
 		if (!enable_irq_wake(client->irq))
 			i2c_dev->irq_wake_up = true;
 	}
+#if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
+	if (enable_irq_wake(nfc_dev->nfc_vbat_monitor.irq_num) != 0)
+		pr_err("%s: vbat irq wake enabled failed\n", __func__);
+#endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
 	pr_debug("%s: irq_wake_up = %d", __func__, i2c_dev->irq_wake_up);
 	return 0;
 }
@@ -483,6 +511,7 @@ int nfc_i2c_dev_resume(struct device *device)
 	struct i2c_client *client = to_i2c_client(device);
 	struct nfc_dev *nfc_dev = i2c_get_clientdata(client);
 	struct i2c_dev *i2c_dev = NULL;
+
 	if (!nfc_dev) {
 		pr_err("%s: device doesn't exist anymore\n", __func__);
 		return -ENODEV;
@@ -493,6 +522,10 @@ int nfc_i2c_dev_resume(struct device *device)
 		if (!disable_irq_wake(client->irq))
 			i2c_dev->irq_wake_up = false;
 	}
+#if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
+	if (disable_irq_wake(nfc_dev->nfc_vbat_monitor.irq_num) != 0)
+		pr_err("%s: vbat irq wake disabled failed\n", __func__);
+#endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
 	pr_debug("%s: irq_wake_up = %d", __func__, i2c_dev->irq_wake_up);
 	return 0;
 }
