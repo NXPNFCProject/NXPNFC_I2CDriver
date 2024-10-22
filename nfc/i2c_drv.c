@@ -45,7 +45,10 @@
 #endif
 #include "common_ese.h"
 #include "nfc_vbat_monitor.h"
-
+#if IS_ENABLED(CONFIG_NXP_COLD_RESET)
+#include "cold_reset.h"
+#include <linux/kthread.h>             //kernel threads
+#endif
 /**
  * i2c_disable_irq()
  *
@@ -337,7 +340,7 @@ int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	struct i2c_dev *i2c_dev = NULL;
 	struct platform_configs *nfc_configs = NULL;
 	struct platform_gpio *nfc_gpio = NULL;
-
+	static struct task_struct *etx_thread;
 	pr_debug("%s: enter\n", __func__);
 	nfc_dev = kzalloc(sizeof(struct nfc_dev), GFP_KERNEL);
 	if (nfc_dev == NULL) {
@@ -431,6 +434,17 @@ int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	i2c_dev->irq_wake_up = false;
 
 	pr_info("%s: probing nfc i2c successfully\n", __func__);
+#if IS_ENABLED(CONFIG_NXP_COLD_RESET)
+	nfc_dev->release_read = false;
+	ret = nfc_dev_func(nfc_dev);
+	etx_thread = kthread_run(cold_reset_thread_handler, NULL, "eTx Thread");
+	if (etx_thread) {
+		pr_info("Kthread Created Successfully...\n");
+	} else {
+		pr_info("Cannot create kthread\n");
+	}
+#endif
+
 	return 0;
 err_nfc_misc_unregister:
 	nfc_misc_unregister(nfc_dev, DEV_COUNT);
@@ -467,6 +481,9 @@ int nfc_i2c_dev_remove(struct i2c_client *client)
 		pr_err("%s: device already in use\n", __func__);
 		return -EBUSY;
 	}
+#if IS_ENABLED(CONFIG_NXP_COLD_RESET)
+	nfc_dev_cold_reset_flush();
+#endif
 	device_init_wakeup(&client->dev, false);
 	free_irq(client->irq, nfc_dev);
 #if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)

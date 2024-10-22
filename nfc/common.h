@@ -214,7 +214,6 @@ struct nfc_dev {
 	int (*nfc_enable_intr)(struct nfc_dev *dev);
 	int (*nfc_disable_intr)(struct nfc_dev *dev);
 };
-
 int nfc_dev_open(struct inode *inode, struct file *filp);
 int nfc_dev_flush(struct file *pfile, fl_owner_t id);
 int nfc_dev_close(struct inode *inode, struct file *filp);
@@ -231,9 +230,11 @@ int configure_gpio(unsigned int gpio, int flag);
 void gpio_set_ven(struct nfc_dev *nfc_dev, int value);
 void gpio_free_all(struct nfc_dev *nfc_dev);
 int validate_nfc_state_nci(struct nfc_dev *nfc_dev);
+int i2c_read(struct nfc_dev *nfc_dev, char *buf, size_t count, int timeout);
 #if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
 int nfc_vbat_monitor_init(struct nfc_dev *nfc_dev,
 			  struct platform_gpio *nfc_gpio,
 			  struct i2c_client *client);
 #endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
+int nfc_dev_func(struct nfc_dev *nfc_dev);
 #endif /* _COMMON_H_ */

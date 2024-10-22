@@ -264,7 +264,8 @@ static int nfc_gpio_info(struct nfc_dev *nfc_dev, unsigned long arg)
 	}
 	ret = copy_to_user((uint32_t *)arg, &gpios_status, sizeof(value));
 	if (ret < 0) {
-		pr_err("%s : Unable to copy data from kernel space to user space");
+		pr_err("%s : Unable to copy data from kernel space to user space",
+			__func__);
 		return -EFAULT;
 	}
 	return 0;
