@@ -35,7 +35,7 @@
  *
  * @nfc_dev:  the dev structure for driver.
  * @buf:      to copy/get response message.
- * Return: -ENOTCONN for transcieve error
+ * Return: -EREMOTEIO for transcieve error
  * No. of bytes read if Success(or no issue)
  */
 int nfc_nci_data_read(struct nfc_dev *nfc_dev, char *buf)
@@ -47,14 +47,14 @@ int nfc_nci_data_read(struct nfc_dev *nfc_dev, char *buf)
 	ret = i2c_master_recv(nfc_dev->i2c_dev.client, buf, hdr_len);
 	if (ret < 0) {
 		pr_err("%s: returned header error %d\n", __func__, ret);
-		return -ENOTCONN;
+		return -EREMOTEIO;
 	}
 	length_byte = buf[NCI_PAYLOAD_LEN_IDX];
 	ret = i2c_master_recv(nfc_dev->i2c_dev.client, buf + hdr_len,
 			      length_byte);
 	if (ret < 0) {
 		pr_err("%s:  returned payload error %d\n", __func__, ret);
-		return -ENOTCONN;
+		return -EREMOTEIO;
 	}
 	return (hdr_len + length_byte);
 }
@@ -65,7 +65,7 @@ int nfc_nci_data_read(struct nfc_dev *nfc_dev, char *buf)
  * Reset and init commands send to recover NFC
  *
  * @nfc_dev: nfc device data structure
- * Return: -ENOTCONN for transcieve error
+ * Return: -EREMOTEIO for transcieve error
  * 0 if Success(or no issue)
  */
 int perform_nfcc_initialization(struct nfc_dev *nfc_dev)
@@ -102,7 +102,7 @@ int perform_nfcc_initialization(struct nfc_dev *nfc_dev)
 			cmd_read_buff[3] == 0x00)
 			return 0;
 	} while (0);
-	ret = -ENOTCONN;
+	ret = -EREMOTEIO;
 	pr_err("%s: no response for nci cmd, ret: %d\n", __func__, ret);
 	return ret;
 }
@@ -113,12 +113,12 @@ int perform_nfcc_initialization(struct nfc_dev *nfc_dev)
  * send nfcc recovery for NFC_VBAT_MONITOR_MAX_RETRY_COUNT times
  *
  * @nfc_dev: nfc device data structure
- * Return: -ENOTCONN for transcieve error
+ * Return: -EREMOTEIO for transcieve error
  * 0 if Success(or no issue)
  */
 int nfcc_vbat_recovery(struct nfc_dev *nfc_dev)
 {
-	int ret = -ENOTCONN;
+	int ret = -EREMOTEIO;
 	unsigned char retrycount = 0;
 
 	do {
