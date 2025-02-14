@@ -1,6 +1,5 @@
 /******************************************************************************
- * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright 2019-2021, 2024 NXP
+ * Copyright 2024 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,29 +16,12 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  ******************************************************************************/
-#ifndef _I2C_DRV_H_
-#define _I2C_DRV_H_
+#if IS_ENABLED(CONFIG_NXP_COLD_RESET)
+#include <linux/cdev.h>
 
-#include <linux/i2c.h>
+#define NFC_RST_CMD_READ_DELAY_MS (50)
 
-/* kept same as dts */
-#define NFC_I2C_DRV_STR			"nxp,sn-nci"
-#define NFC_I2C_DEV_ID			"sn-i2c"
-
-/* Interface specific parameters */
-struct i2c_dev {
-	struct i2c_client *client;
-	/* IRQ parameters */
-	bool irq_enabled;
-	spinlock_t irq_enabled_lock;
-	/* NFC_IRQ wake-up state */
-	bool irq_wake_up;
-};
-
-long nfc_i2c_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg);
-int nfc_i2c_dev_probe(struct i2c_client *client);
-void nfc_i2c_dev_remove(struct i2c_client *client);
-int nfc_i2c_dev_suspend(struct device *device);
-int nfc_i2c_dev_resume(struct device *device);
-
-#endif /* _I2C_DRV_H_ */
+int cold_reset_thread_handler(void *pv);
+int nfc_dev_cold_reset_flush(void);
+static struct task_struct *etx_thread;
+#endif
