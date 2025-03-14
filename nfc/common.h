@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright 2019-2024 NXP
+ * Copyright 2019-2025 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 
 #include <linux/cdev.h>
 
+#include "device_log.h"
 #include "i2c_drv.h"
 #include "nfc_vbat_monitor.h"
 

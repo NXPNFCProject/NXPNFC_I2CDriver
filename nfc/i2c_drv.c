@@ -113,7 +113,7 @@ int i2c_read(struct nfc_dev *nfc_dev, char *buf, size_t count, int timeout)
 	struct i2c_dev *i2c_dev = &nfc_dev->i2c_dev;
 	struct platform_gpio *nfc_gpio = &nfc_dev->configs.gpio;
 
-	pr_debug("%s: reading %zu bytes.\n", __func__, count);
+	print_debug("%s: reading %zu bytes.\n", __func__, count);
 
 	if (timeout > NCI_CMD_RSP_TIMEOUT_MS)
 		timeout = NCI_CMD_RSP_TIMEOUT_MS;
@@ -152,7 +152,7 @@ int i2c_read(struct nfc_dev *nfc_dev, char *buf, size_t count, int timeout)
 			}
 #if IS_ENABLED(CONFIG_NXP_NFC_VBAT_MONITOR)
 			if (nfc_dev->nfc_vbat_monitor.vbat_monitor_status) {
-				pr_debug("%s: NFC recovering  state\n",
+				print_debug("%s: NFC recovering  state\n",
 					 __func__);
 				nfc_dev->nfc_vbat_monitor.vbat_monitor_status =
 					false;
@@ -178,7 +178,7 @@ int i2c_read(struct nfc_dev *nfc_dev, char *buf, size_t count, int timeout)
 			 * will again call read system call
 			 */
 			if (nfc_dev->release_read) {
-				pr_debug("%s: releasing read\n", __func__);
+				print_debug("%s: releasing read\n", __func__);
 				return 0;
 			}
 			pr_warn("%s: spurious interrupt detected\n", __func__);
@@ -230,7 +230,7 @@ int i2c_write(struct nfc_dev *nfc_dev, const char *buf, size_t count,
 	if (count > MAX_DL_BUFFER_SIZE)
 		count = MAX_DL_BUFFER_SIZE;
 
-	pr_debug("%s: writing %zu bytes.\n", __func__, count);
+	print_debug("%s: writing %zu bytes.\n", __func__, count);
 	/*
 	 * Wait for any pending read for max 15ms before write
 	 * This is to avoid any packet corruption during read, when
@@ -278,7 +278,7 @@ ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t count,
 	if (filp->f_flags & O_NONBLOCK) {
 		ret = i2c_master_recv(nfc_dev->i2c_dev.client,
 				      nfc_dev->read_kbuf, count);
-		pr_debug("%s: NONBLOCK read ret = %d\n", __func__, ret);
+		print_debug("%s: NONBLOCK read ret = %d\n", __func__, ret);
 	} else {
 		ret = i2c_read(nfc_dev, nfc_dev->read_kbuf, count, 0);
 	}
@@ -341,7 +341,7 @@ int nfc_i2c_dev_probe(struct i2c_client *client)
 #if IS_ENABLED(CONFIG_NXP_COLD_RESET)
 	static struct task_struct *etx_thread;
 #endif /* CONFIG_NXP_COLD_RESET */
-	pr_debug("%s: enter\n", __func__);
+	print_debug("%s: enter\n", __func__);
 	nfc_dev = kzalloc(sizeof(struct nfc_dev), GFP_KERNEL);
 	if (nfc_dev == NULL) {
 		ret = -ENOMEM;
@@ -517,7 +517,7 @@ int nfc_i2c_dev_suspend(struct device *device)
 	if (enable_irq_wake(nfc_dev->nfc_vbat_monitor.irq_num) != 0)
 		pr_err("%s: vbat irq wake enabled failed\n", __func__);
 #endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
-	pr_debug("%s: irq_wake_up = %d", __func__, i2c_dev->irq_wake_up);
+	print_debug("%s: irq_wake_up = %d", __func__, i2c_dev->irq_wake_up);
 	return 0;
 }
 
@@ -541,7 +541,7 @@ int nfc_i2c_dev_resume(struct device *device)
 	if (disable_irq_wake(nfc_dev->nfc_vbat_monitor.irq_num) != 0)
 		pr_err("%s: vbat irq wake disabled failed\n", __func__);
 #endif /* CONFIG_NXP_NFC_VBAT_MONITOR */
-	pr_debug("%s: irq_wake_up = %d", __func__, i2c_dev->irq_wake_up);
+	print_debug("%s: irq_wake_up = %d", __func__, i2c_dev->irq_wake_up);
 	return 0;
 }
 

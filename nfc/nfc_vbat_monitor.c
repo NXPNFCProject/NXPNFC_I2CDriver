@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2024 NXP
+ * Copyright 2024-2025 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -156,7 +156,7 @@ irqreturn_t nfc_vbat_monitor_irq_handler(int irq, void *dev_id)
 	disable_irq_nosync(nfc_dev->nfc_vbat_monitor.irq_num);
 	if (!queue_work(nfc_dev->nfc_vbat_monitor.wq,
 			&nfc_dev->nfc_vbat_monitor.work))
-		pr_debug("%s: queue_work success\n", __func__);
+		print_debug("%s: queue_work success\n", __func__);
 	spin_unlock_irqrestore(
 		&nfc_dev->nfc_vbat_monitor.nfc_vbat_monitor_enabled_lock,
 		flags);
@@ -179,7 +179,7 @@ static void nfc_vbat_monitor_workqueue_handler(struct work_struct *work)
 	struct nfc_dev *nfc_dev = container_of(nfc_vbat_monitor, struct nfc_dev,
 					       nfc_vbat_monitor);
 
-	pr_debug("%s: read pending status flag: %d\n", __func__,
+	print_debug("%s: read pending status flag: %d\n", __func__,
 		 nfc_dev->cold_reset.is_nfc_read_pending);
 	nfc_dev->nfc_disable_intr(nfc_dev);
 	mutex_lock(&nfc_dev->write_mutex);
@@ -215,7 +215,7 @@ int nfc_vbat_monitor_init_workqueue(struct nfc_vbat_monitor *nfc_vbat_monitor)
 	if (!nfc_vbat_monitor->wq)
 		pr_err("%s: failed to allocate workqueue\n", __func__);
 	INIT_WORK(&nfc_vbat_monitor->work, nfc_vbat_monitor_workqueue_handler);
-	pr_debug("%s: allocated workqueue\n", __func__);
+	print_debug("%s: allocated workqueue\n", __func__);
 	return 0;
 }
 

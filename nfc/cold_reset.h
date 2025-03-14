@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2024 NXP
+ * Copyright 2024-2025 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
  ******************************************************************************/
 #if IS_ENABLED(CONFIG_NXP_COLD_RESET)
 #include <linux/cdev.h>
-
+#include "device_log.h"
 #define NFC_RST_CMD_READ_DELAY_MS (50)
 
 int cold_reset_thread_handler(void *pv);

@@ -12,7 +12,9 @@ ifdef CONFIG_NXP_NFC_VBAT_MONITOR
 nfc_i2c-y += nfc_vbat_monitor.o
 endif
 
+ifdef CONFIG_DYNAMIC_DEBUG
 ccflags-y += -DDYNAMIC_DEBUG_MODULE
+endif
 
 ifdef CONFIG_NXP_COLD_RESET
 ccflags-y += -DCONFIG_NXP_COLD_RESET

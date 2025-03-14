@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2020-2022, 2024 NXP
+ * Copyright 2020-2022, 2024-2025 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@ static void cold_reset_gaurd_timer_callback(struct timer_list *t)
 {
 	struct cold_reset *cold_reset = from_timer(cold_reset, t, timer);
 
-	pr_debug("%s: entry\n", __func__);
+	print_debug("%s: entry\n", __func__);
 	cold_reset->in_progress = false;
 }
 
@@ -35,7 +35,7 @@ static long start_cold_reset_guard_timer(struct cold_reset *cold_reset)
 	long ret = -EINVAL;
 
 	if (timer_pending(&cold_reset->timer) == 1) {
-		pr_debug("%s: delete pending timer\n", __func__);
+		print_debug("%s: delete pending timer\n", __func__);
 		/* delete timer if already pending */
 		del_timer(&cold_reset->timer);
 	}
@@ -74,14 +74,14 @@ static int send_cold_reset_protection_cmd(struct nfc_dev *nfc_dev,
 		goto exit;
 	}
 	cmd = nfc_dev->write_kbuf;
-	if (requestType)
-		pr_debug(" %s: NxpNciX: %d > 0x%02x%02x%02x%02x\n", __func__,
+	if (requestType){
+		print_debug(" %s: NxpNciX: %d > 0x%02x%02x%02x%02x\n", __func__,
 			 ret, cmd[NCI_HDR_IDX], cmd[NCI_HDR_OID_IDX],
-			 cmd[NCI_PAYLOAD_LEN_IDX], cmd[NCI_PAYLOAD_IDX]);
-	else
-		pr_debug(" %s: NxpNciX: %d > 0x%02x%02x%02x\n", __func__, ret,
+			 cmd[NCI_PAYLOAD_LEN_IDX], cmd[NCI_PAYLOAD_IDX]);}
+	else{
+		print_debug(" %s: NxpNciX: %d > 0x%02x%02x%02x\n", __func__, ret,
 			 cmd[NCI_HDR_IDX], cmd[NCI_HDR_OID_IDX],
-			 cmd[NCI_PAYLOAD_LEN_IDX]);
+			 cmd[NCI_PAYLOAD_LEN_IDX]);}
 exit:
 	return ret;
 }
@@ -97,7 +97,7 @@ void wakeup_on_prop_rsp(struct nfc_dev *nfc_dev, uint8_t *buf)
 	else
 		cold_reset->status = buf[NCI_PAYLOAD_IDX];
 
-	pr_debug(" %s: NxpNciR 0x%02x%02x%02x%02x\n", __func__,
+	print_debug(" %s: NxpNciR 0x%02x%02x%02x%02x\n", __func__,
 		 buf[NCI_HDR_IDX], buf[NCI_HDR_OID_IDX],
 		 buf[NCI_PAYLOAD_LEN_IDX], buf[NCI_PAYLOAD_IDX]);
 
@@ -112,11 +112,11 @@ static int validate_cold_reset_protection_request(struct cold_reset *cold_reset,
 
 	if (!cold_reset->reset_protection) {
 		if (IS_RST_PROT_EN_REQ(arg) && IS_SRC_VALID_PROT(arg)) {
-			pr_debug("%s: reset protection enable\n", __func__);
+			print_debug("%s: reset protection enable\n", __func__);
 		} else if (IS_CLD_RST_REQ(arg) && IS_SRC_VALID(arg)) {
-			pr_debug("%s: cold reset\n", __func__);
+			print_debug("%s: cold reset\n", __func__);
 		} else if (IS_RST_PROT_DIS_REQ(arg) && IS_SRC_VALID_PROT(arg)) {
-			pr_debug("%s: reset protection already disable\n",
+			print_debug("%s: reset protection already disable\n",
 				 __func__);
 			ret = -EINVAL;
 		} else {
@@ -126,14 +126,14 @@ static int validate_cold_reset_protection_request(struct cold_reset *cold_reset,
 	} else {
 		if (IS_RST_PROT_DIS_REQ(arg) &&
 		    IS_SRC(arg, cold_reset->rst_prot_src)) {
-			pr_debug("%s: disable reset protection from same src\n",
+			print_debug("%s: disable reset protection from same src\n",
 				 __func__);
 		} else if (IS_CLD_RST_REQ(arg) &&
 			   IS_SRC(arg, cold_reset->rst_prot_src)) {
-			pr_debug("%s: cold reset from same source\n", __func__);
+			print_debug("%s: cold reset from same source\n", __func__);
 		} else if (IS_RST_PROT_EN_REQ(arg) &&
 			   IS_SRC(arg, cold_reset->rst_prot_src)) {
-			pr_debug("%s: enable reset protection from same src\n",
+			print_debug("%s: enable reset protection from same src\n",
 				 __func__);
 			ret = -EINVAL;
 		} else {
@@ -216,7 +216,7 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 					retry_cnt = retry_cnt + 1;
 					ret = -EAGAIN;
 				} else {
-					pr_debug("%s: Maximum retry reached",
+					print_debug("%s: Maximum retry reached",
 						 __func__);
 					ret = -ETIMEDOUT;
 				}
@@ -283,19 +283,19 @@ int nfc_ese_pwr(struct nfc_dev *nfc_dev, unsigned long arg)
 		 */
 		nfc_dev->nfc_ven_enabled = gpio_get_value(nfc_gpio->ven);
 		if (!nfc_dev->nfc_ven_enabled) {
-			pr_debug("%s: ese hal service setting ven high\n",
+			print_debug("%s: ese hal service setting ven high\n",
 				 __func__);
 			gpio_set_ven(nfc_dev, 1);
 		} else {
-			pr_debug("%s: ven already high\n", __func__);
+			print_debug("%s: ven already high\n", __func__);
 		}
 	} else if (arg == ESE_POWER_OFF) {
 		if (!nfc_dev->nfc_ven_enabled) {
-			pr_debug("%s: nfc not enabled, disabling ven\n",
+			print_debug("%s: nfc not enabled, disabling ven\n",
 				 __func__);
 			gpio_set_ven(nfc_dev, 0);
 		} else {
-			pr_debug("%s: keep ven high as nfc is enabled\n",
+			print_debug("%s: keep ven high as nfc is enabled\n",
 				 __func__);
 		}
 	} else if (arg == ESE_POWER_STATE) {
@@ -334,7 +334,7 @@ int perform_ese_cold_reset(unsigned long arg)
 			return -EPERM;
 		}
 	}
-	pr_debug("%s: arg = %lu ret = %d\n", __func__, arg, ret);
+	print_debug("%s: arg = %lu ret = %d\n", __func__, arg, ret);
 	return ret;
 }
 EXPORT_SYMBOL(perform_ese_cold_reset);
