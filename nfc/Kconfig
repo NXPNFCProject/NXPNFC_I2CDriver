@@ -11,3 +11,9 @@ config NXP_NFC_I2C
 	  resides in the usermode and it has no other NFC dependencies.
 
 	  If unsure, say N.
+
+config NXP_NFC_VBAT_MONITOR
+	bool "VBAT monitoring configuration enbale/disable"
+	default n
+	help
+	  Config to enable VBAT monitor
