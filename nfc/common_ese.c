@@ -22,6 +22,7 @@
 
 #include "common_ese.h"
 
+
 static void cold_reset_gaurd_timer_callback(struct timer_list *t)
 {
 	struct cold_reset *cold_reset = from_timer(cold_reset, t, timer);
@@ -75,11 +76,11 @@ static int send_cold_reset_protection_cmd(struct nfc_dev *nfc_dev,
 	}
 	cmd = nfc_dev->write_kbuf;
 	if (requestType){
-		print_debug(" %s: NxpNciX: %d > 0x%02x%02x%02x%02x\n", __func__,
+		pr_debug(" %s: NxpNciX: %d > 0x%02x%02x%02x%02x\n", __func__,
 			 ret, cmd[NCI_HDR_IDX], cmd[NCI_HDR_OID_IDX],
 			 cmd[NCI_PAYLOAD_LEN_IDX], cmd[NCI_PAYLOAD_IDX]);}
 	else{
-		print_debug(" %s: NxpNciX: %d > 0x%02x%02x%02x\n", __func__, ret,
+		pr_debug(" %s: NxpNciX: %d > 0x%02x%02x%02x\n", __func__, ret,
 			 cmd[NCI_HDR_IDX], cmd[NCI_HDR_OID_IDX],
 			 cmd[NCI_PAYLOAD_LEN_IDX]);}
 exit:
@@ -97,7 +98,7 @@ void wakeup_on_prop_rsp(struct nfc_dev *nfc_dev, uint8_t *buf)
 	else
 		cold_reset->status = buf[NCI_PAYLOAD_IDX];
 
-	print_debug(" %s: NxpNciR 0x%02x%02x%02x%02x\n", __func__,
+	pr_debug(" %s: NxpNciR 0x%02x%02x%02x%02x\n", __func__,
 		 buf[NCI_HDR_IDX], buf[NCI_HDR_OID_IDX],
 		 buf[NCI_PAYLOAD_LEN_IDX], buf[NCI_PAYLOAD_IDX]);
 
@@ -173,7 +174,8 @@ static int perform_cold_reset_protection(struct nfc_dev *nfc_dev,
 	}
 
 	/* enable interrupt if not enabled incase when devnode not opened by HAL */
-	nfc_dev->nfc_enable_intr(nfc_dev);
+	if (nfc_dev->nfc_enable_intr != NULL)
+		nfc_dev->nfc_enable_intr(nfc_dev);
 
 	mutex_lock(&nfc_dev->write_mutex);
 	/* write api has 15ms maximum wait to clear any pending read before */

@@ -22,8 +22,10 @@
 
 #include <linux/cdev.h>
 
+#if IS_ENABLED(CONFIG_NXP_NFC_I2C)
+ #include "i2c_drv.h"
+#endif //IS_ENABLED(CONFIG_NXP_NFC_I2C)
 #include "device_log.h"
-#include "i2c_drv.h"
 #include "nfc_vbat_monitor.h"
 
 /* Max device count for this driver */
@@ -45,6 +47,8 @@
 
 /* FW DNLD packet details */
 #define DL_HDR_LEN			(2)
+#define DL_CRC_LEN			(2)
+#define DL_PAYLOAD_LEN_IDX		(1)
 #define DL_CRC_LEN			(2)
 
 #define MAX_NCI_PAYLOAD_LEN		(255)
@@ -199,7 +203,9 @@ struct nfc_dev {
 	bool nfc_ven_enabled;
 	bool release_read;
 	union {
-		struct i2c_dev i2c_dev;
+		#if IS_ENABLED(CONFIG_NXP_NFC_I2C)
+			struct i2c_dev i2c_dev;
+		#endif //IS_ENABLED(CONFIG_NXP_NFC_I2C)
 	};
 	struct platform_configs configs;
 	struct cold_reset cold_reset;

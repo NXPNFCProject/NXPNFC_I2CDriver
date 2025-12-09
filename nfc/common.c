@@ -20,7 +20,7 @@
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/delay.h>
-#include <linux/interrupt.h>
+#include <linux/version.h>
 
 #include "common_ese.h"
 
@@ -229,6 +229,7 @@ int nfc_misc_register(struct nfc_dev *nfc_dev,
 	}
 	return 0;
 }
+#if IS_ENABLED(CONFIG_NXP_NFC_I2C)
 /**
  * nfc_gpio_info() - gets the status of nfc gpio pins and encodes into a byte.
  * @nfc_dev:	nfc device data structure
@@ -243,7 +244,6 @@ int nfc_misc_register(struct nfc_dev *nfc_dev,
  * Return: -EFAULT, if unable to copy the data from kernel space to userspace, 0
  * if Success(or no issue)
  */
-
 static int nfc_gpio_info(struct nfc_dev *nfc_dev, unsigned long arg)
 {
 	unsigned int gpios_status = 0;
@@ -270,7 +270,7 @@ static int nfc_gpio_info(struct nfc_dev *nfc_dev, unsigned long arg)
 	}
 	return 0;
 }
-
+#endif //IS_ENABLED(CONFIG_NXP_NFC_I2C)
 /**
  * nfc_ioctl_power_states() - power control
  * @nfc_dev:    nfc device data structure
@@ -293,13 +293,15 @@ static int nfc_ioctl_power_states(struct nfc_dev *nfc_dev, unsigned long arg)
 		 * interrupts to avoid spurious notifications to upper
 		 * layers.
 		 */
-		nfc_dev->nfc_disable_intr(nfc_dev);
+		if (nfc_dev->nfc_disable_intr != NULL)
+			nfc_dev->nfc_disable_intr(nfc_dev);
 		set_valid_gpio(nfc_gpio->dwl_req, 0);
 		gpio_set_ven(nfc_dev, 0);
 		nfc_dev->nfc_ven_enabled = false;
 		nfc_dev->nfc_state = NFC_STATE_NCI;
 	} else if (arg == NFC_POWER_ON) {
-		nfc_dev->nfc_enable_intr(nfc_dev);
+		if (nfc_dev->nfc_enable_intr != NULL)
+			nfc_dev->nfc_enable_intr(nfc_dev);
 		set_valid_gpio(nfc_gpio->dwl_req, 0);
 
 		gpio_set_ven(nfc_dev, 1);
@@ -310,12 +312,14 @@ static int nfc_ioctl_power_states(struct nfc_dev *nfc_dev, unsigned long arg)
 		 * We are switching to download Mode, toggle the enable pin
 		 * in order to set the NFCC in the new mode
 		 */
-		nfc_dev->nfc_disable_intr(nfc_dev);
+		if (nfc_dev->nfc_disable_intr != NULL)
+			nfc_dev->nfc_disable_intr(nfc_dev);
 		set_valid_gpio(nfc_gpio->dwl_req, 1);
 		nfc_dev->nfc_state = NFC_STATE_FW_DWL;
 		gpio_set_ven(nfc_dev, 0);
 		gpio_set_ven(nfc_dev, 1);
-		nfc_dev->nfc_enable_intr(nfc_dev);
+		if (nfc_dev->nfc_enable_intr != NULL)
+			nfc_dev->nfc_enable_intr(nfc_dev);
 	} else if (arg == NFC_FW_DWL_HIGH) {
 		/*
 		 * Setting firmware download gpio to HIGH
@@ -325,10 +329,12 @@ static int nfc_ioctl_power_states(struct nfc_dev *nfc_dev, unsigned long arg)
 		nfc_dev->nfc_state = NFC_STATE_FW_DWL;
 
 	} else if (arg == NFC_VEN_FORCED_HARD_RESET) {
-		nfc_dev->nfc_disable_intr(nfc_dev);
+		if (nfc_dev->nfc_disable_intr != NULL)
+			nfc_dev->nfc_disable_intr(nfc_dev);
 		gpio_set_ven(nfc_dev, 0);
 		gpio_set_ven(nfc_dev, 1);
-		nfc_dev->nfc_enable_intr(nfc_dev);
+		if (nfc_dev->nfc_enable_intr != NULL)
+			nfc_dev->nfc_enable_intr(nfc_dev);
 	} else if (arg == NFC_FW_DWL_LOW) {
 		/*
 		 * Setting firmware download gpio to LOW
@@ -395,6 +401,7 @@ long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg)
 	case NFC_SET_PWR:
 		ret = nfc_ioctl_power_states(nfc_dev, arg);
 		break;
+
 	case NFC_SET_RESET_READ_PENDING:
 		if (arg == NFC_SET_READ_PENDING) {
 			nfc_dev->cold_reset.is_nfc_read_pending = true;
@@ -406,14 +413,16 @@ long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg)
 			ret = -EINVAL;
 		}
 		break;
+#if IS_ENABLED(CONFIG_NXP_NFC_I2C)
+	case NFC_GET_GPIO_STATUS:
+		ret = nfc_gpio_info(nfc_dev, arg);
+		break;
+#endif //IS_ENABLED(CONFIG_NXP_NFC_I2C)
 	case ESE_SET_PWR:
 		ret = nfc_ese_pwr(nfc_dev, arg);
 		break;
 	case ESE_GET_PWR:
 		ret = nfc_ese_pwr(nfc_dev, ESE_POWER_STATE);
-		break;
-	case NFC_GET_GPIO_STATUS:
-		ret = nfc_gpio_info(nfc_dev, arg);
 		break;
 	default:
 		pr_err("%s: bad cmd %lu\n", __func__, arg);
@@ -440,7 +449,8 @@ int nfc_dev_open(struct inode *inode, struct file *filp)
 	if (nfc_dev->dev_ref_count == 0) {
 		set_valid_gpio(nfc_dev->configs.gpio.dwl_req, 0);
 
-		nfc_dev->nfc_enable_intr(nfc_dev);
+		if (nfc_dev->nfc_enable_intr != NULL)
+			nfc_dev->nfc_enable_intr(nfc_dev);
 	}
 	nfc_dev->dev_ref_count = nfc_dev->dev_ref_count + 1;
 	mutex_unlock(&nfc_dev->dev_ref_mutex);
@@ -458,7 +468,8 @@ int nfc_dev_flush(struct file *pfile, fl_owner_t id)
 	 */
 	if (!mutex_trylock(&nfc_dev->read_mutex)) {
 		nfc_dev->release_read = true;
-		nfc_dev->nfc_disable_intr(nfc_dev);
+		if (nfc_dev->nfc_disable_intr != NULL)
+			nfc_dev->nfc_disable_intr(nfc_dev);
 		wake_up(&nfc_dev->read_wq);
 		print_debug("%s: waiting for release of blocked read\n", __func__);
 		mutex_lock(&nfc_dev->read_mutex);
@@ -482,7 +493,8 @@ int nfc_dev_close(struct inode *inode, struct file *filp)
 	print_debug("%s: %d, %d\n", __func__, imajor(inode), iminor(inode));
 	mutex_lock(&nfc_dev->dev_ref_mutex);
 	if (nfc_dev->dev_ref_count == 1) {
-		nfc_dev->nfc_disable_intr(nfc_dev);
+		if (nfc_dev->nfc_disable_intr != NULL)
+			nfc_dev->nfc_disable_intr(nfc_dev);
 		set_valid_gpio(nfc_dev->configs.gpio.dwl_req, 0);
 		/*
 		 * Use "ESE_RST_PROT_DIS" as argument

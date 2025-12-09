@@ -1,8 +1,7 @@
-obj-$(CONFIG_NXP_NFC_I2C) := nfc_i2c.o
-
 nfc_i2c-y := common.o \
              common_ese.o \
              i2c_drv.o
+obj-$(CONFIG_NXP_NFC_I2C) += nfc_i2c.o
 
 ifdef CONFIG_NXP_COLD_RESET
 nfc_i2c-y += cold_reset.o
@@ -12,9 +11,7 @@ ifdef CONFIG_NXP_NFC_VBAT_MONITOR
 nfc_i2c-y += nfc_vbat_monitor.o
 endif
 
-ifdef CONFIG_DYNAMIC_DEBUG
 ccflags-y += -DDYNAMIC_DEBUG_MODULE
-endif
 
 ifdef CONFIG_NXP_COLD_RESET
 ccflags-y += -DCONFIG_NXP_COLD_RESET
