@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2020-2021, 2024-2025 NXP
+ * Copyright 2020-2021, 2024-2026 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -95,5 +95,6 @@ int nfc_ese_pwr(struct nfc_dev *nfc_dev, unsigned long arg);
 void ese_cold_reset_release(struct nfc_dev *nfc_dev);
 void common_ese_init(struct nfc_dev *nfc_dev);
 void common_ese_exit(struct nfc_dev *nfc_dev);
+int perform_ese_cold_reset(unsigned long arg);
 
 #endif /* _COMMON_ESE_H_ */

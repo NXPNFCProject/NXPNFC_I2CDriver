@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright 2013-2022, 2024-2025 NXP
+ * Copyright 2013-2022, 2024-2026 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -57,7 +57,7 @@
  *
  * Return: int
  */
-int i2c_disable_irq(struct nfc_dev *dev)
+static int i2c_disable_irq(struct nfc_dev *dev)
 {
 	unsigned long flags;
 
@@ -79,7 +79,7 @@ int i2c_disable_irq(struct nfc_dev *dev)
  *
  * Return: int
  */
-int i2c_enable_irq(struct nfc_dev *dev)
+static int i2c_enable_irq(struct nfc_dev *dev)
 {
 	unsigned long flags;
 
@@ -220,7 +220,7 @@ err:
 	return ret;
 }
 
-int i2c_write(struct nfc_dev *nfc_dev, const char *buf, size_t count,
+static int i2c_write(struct nfc_dev *nfc_dev, const char *buf, size_t count,
 	      int max_retry_cnt)
 {
 	int ret = -EINVAL;
@@ -264,7 +264,7 @@ int i2c_write(struct nfc_dev *nfc_dev, const char *buf, size_t count,
 	return ret;
 }
 
-ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t count,
+static ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t count,
 			 loff_t *offset)
 {
 	int ret;
@@ -292,7 +292,7 @@ ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t count,
 	return ret;
 }
 
-ssize_t nfc_i2c_dev_write(struct file *filp, const char __user *buf,
+static ssize_t nfc_i2c_dev_write(struct file *filp, const char __user *buf,
 			  size_t count, loff_t *offset)
 {
 	int ret;

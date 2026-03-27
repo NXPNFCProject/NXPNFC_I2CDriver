@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright 2019-2025 NXP
+ * Copyright 2019-2026 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 #define _COMMON_H_
 
 #include <linux/cdev.h>
+#include <linux/version.h>
 
 #if IS_ENABLED(CONFIG_NXP_NFC_I2C)
  #include "i2c_drv.h"

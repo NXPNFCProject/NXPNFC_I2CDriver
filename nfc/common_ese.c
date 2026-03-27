@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2020-2022, 2024-2025 NXP
+ * Copyright 2020-2022, 2024-2026 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
  *
  ******************************************************************************/
 #include <linux/jiffies.h>
+#include <linux/timer.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
 
@@ -25,8 +26,11 @@
 
 static void cold_reset_gaurd_timer_callback(struct timer_list *t)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+	struct cold_reset *cold_reset = timer_container_of(cold_reset, t, timer);
+#else
 	struct cold_reset *cold_reset = from_timer(cold_reset, t, timer);
-
+#endif
 	print_debug("%s: entry\n", __func__);
 	cold_reset->in_progress = false;
 }
@@ -38,7 +42,11 @@ static long start_cold_reset_guard_timer(struct cold_reset *cold_reset)
 	if (timer_pending(&cold_reset->timer) == 1) {
 		print_debug("%s: delete pending timer\n", __func__);
 		/* delete timer if already pending */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+		timer_delete(&cold_reset->timer);
+#else
 		del_timer(&cold_reset->timer);
+#endif
 	}
 	cold_reset->in_progress = true;
 	timer_setup(&cold_reset->timer, cold_reset_gaurd_timer_callback, 0);
@@ -349,7 +357,11 @@ void ese_cold_reset_release(struct nfc_dev *nfc_dev)
 	cold_reset->rsp_pending = false;
 	cold_reset->in_progress = false;
 	if (timer_pending(&cold_reset->timer) == 1)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
+		timer_delete(&cold_reset->timer);
+#else
 		del_timer(&cold_reset->timer);
+#endif
 }
 
 void common_ese_init(struct nfc_dev *nfc_dev)

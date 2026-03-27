@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright 2019-2022, 2024-2025 NXP
+ * Copyright 2019-2022, 2024-2026 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/delay.h>
-#include <linux/version.h>
 
 #include "common_ese.h"
 
@@ -75,7 +74,7 @@ int nfc_parse_dt(struct device *dev, struct platform_configs *nfc_configs,
 	return 0;
 }
 
-void set_valid_gpio(int gpio, int value)
+static void set_valid_gpio(int gpio, int value)
 {
 	if (gpio_is_valid(gpio)) {
 		print_debug("%s: gpio %d value %d\n", __func__, gpio, value);
@@ -86,7 +85,7 @@ void set_valid_gpio(int gpio, int value)
 	}
 }
 
-int get_valid_gpio(int gpio)
+static int get_valid_gpio(int gpio)
 {
 	int value = -EINVAL;
 
