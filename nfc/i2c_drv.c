@@ -187,7 +187,11 @@ int i2c_read(struct nfc_dev *nfc_dev, char *buf, size_t count, int timeout)
 
 	memset(buf, 0x00, count);
 	/* Read data */
+#if NFC_NXP_I2C_DMA_SAFE
+	ret = i2c_master_recv_dmasafe(nfc_dev->i2c_dev.client, buf, count);
+#else
 	ret = i2c_master_recv(nfc_dev->i2c_dev.client, buf, count);
+#endif
 	if (ret <= 0) {
 		pr_err("%s: returned %d\n", __func__, ret);
 		goto err;
@@ -199,9 +203,15 @@ int i2c_read(struct nfc_dev *nfc_dev, char *buf, size_t count, int timeout)
 	if (nfc_dev->cold_reset.rsp_pending) {
 		if (IS_PROP_CMD_RSP(buf)) {
 			/* Read data */
+#if NFC_NXP_I2C_DMA_SAFE
+			ret = i2c_master_recv_dmasafe(nfc_dev->i2c_dev.client,
+						      &buf[NCI_PAYLOAD_IDX],
+						      buf[NCI_PAYLOAD_LEN_IDX]);
+#else
 			ret = i2c_master_recv(nfc_dev->i2c_dev.client,
 					      &buf[NCI_PAYLOAD_IDX],
 					      buf[NCI_PAYLOAD_LEN_IDX]);
+#endif
 			if (ret <= 0) {
 				pr_err("%s: error reading cold rst/prot rsp\n",
 				       __func__);
@@ -251,7 +261,12 @@ static int i2c_write(struct nfc_dev *nfc_dev, const char *buf, size_t count,
 	}
 
 	for (retry_cnt = 1; retry_cnt <= max_retry_cnt; retry_cnt++) {
+
+#if NFC_NXP_I2C_DMA_SAFE
+		ret = i2c_master_send_dmasafe(nfc_dev->i2c_dev.client, buf, count);
+#else
 		ret = i2c_master_send(nfc_dev->i2c_dev.client, buf, count);
+#endif
 		if (ret <= 0) {
 			usleep_range(WRITE_RETRY_WAIT_TIME_US,
 				     WRITE_RETRY_WAIT_TIME_US + 100);
@@ -276,8 +291,13 @@ static ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf, size_t coun
 	}
 	mutex_lock(&nfc_dev->read_mutex);
 	if (filp->f_flags & O_NONBLOCK) {
+#if NFC_NXP_I2C_DMA_SAFE
+		ret = i2c_master_recv_dmasafe(nfc_dev->i2c_dev.client,
+					      nfc_dev->read_kbuf, count);
+#else
 		ret = i2c_master_recv(nfc_dev->i2c_dev.client,
 				      nfc_dev->read_kbuf, count);
+#endif
 		print_debug("%s: NONBLOCK read ret = %d\n", __func__, ret);
 	} else {
 		ret = i2c_read(nfc_dev, nfc_dev->read_kbuf, count, 0);

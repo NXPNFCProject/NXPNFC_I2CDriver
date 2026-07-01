@@ -38,20 +38,29 @@
  * Return: -EREMOTEIO for transcieve error
  * No. of bytes read if Success(or no issue)
  */
-int nfc_nci_data_read(struct nfc_dev *nfc_dev, char *buf)
+static int nfc_nci_data_read(struct nfc_dev *nfc_dev, char *buf)
 {
 	int ret = 0;
 	int length_byte = 0;
 	unsigned char hdr_len = NCI_HDR_LEN;
 
+#if NFC_NXP_I2C_DMA_SAFE
+	ret = i2c_master_recv_dmasafe(nfc_dev->i2c_dev.client, buf, hdr_len);
+#else
 	ret = i2c_master_recv(nfc_dev->i2c_dev.client, buf, hdr_len);
+#endif
 	if (ret < 0) {
 		pr_err("%s: returned header error %d\n", __func__, ret);
 		return -EREMOTEIO;
 	}
 	length_byte = buf[NCI_PAYLOAD_LEN_IDX];
+#if NFC_NXP_I2C_DMA_SAFE
+	ret = i2c_master_recv_dmasafe(nfc_dev->i2c_dev.client, buf + hdr_len,
+				     length_byte);
+#else
 	ret = i2c_master_recv(nfc_dev->i2c_dev.client, buf + hdr_len,
 			      length_byte);
+#endif
 	if (ret < 0) {
 		pr_err("%s:  returned payload error %d\n", __func__, ret);
 		return -EREMOTEIO;
@@ -68,7 +77,7 @@ int nfc_nci_data_read(struct nfc_dev *nfc_dev, char *buf)
  * Return: -EREMOTEIO for transcieve error
  * 0 if Success(or no issue)
  */
-int perform_nfcc_initialization(struct nfc_dev *nfc_dev)
+static int perform_nfcc_initialization(struct nfc_dev *nfc_dev)
 {
 	int ret = 0;
 	unsigned char cmd_reset_nci[] = { 0x20, 0x00, 0x01, 0x00 };
@@ -116,7 +125,7 @@ int perform_nfcc_initialization(struct nfc_dev *nfc_dev)
  * Return: -EREMOTEIO for transcieve error
  * 0 if Success(or no issue)
  */
-int nfcc_vbat_recovery(struct nfc_dev *nfc_dev)
+static int nfcc_vbat_recovery(struct nfc_dev *nfc_dev)
 {
 	int ret = -EREMOTEIO;
 	unsigned char retrycount = 0;

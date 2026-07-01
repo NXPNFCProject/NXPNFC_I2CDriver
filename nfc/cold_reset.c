@@ -58,15 +58,24 @@ int nfc_nci_data_read(struct nfc_dev *nfc_dev, char *buf)
 	unsigned char hdr_len = NCI_HDR_LEN;
 
 	pr_info("%s: enter\n", __func__);
+#if NFC_NXP_I2C_DMA_SAFE
+	ret = i2c_master_recv_dmasafe(nfc_dev->i2c_dev.client, buf, hdr_len);
+#else
 	ret = i2c_master_recv(nfc_dev->i2c_dev.client, buf, hdr_len);
+#endif
 	if (ret < 0) {
 		pr_info("%s: returned header error1%d\n", __func__, ret);
 		pr_err("%s: returned header error %d\n", __func__, ret);
 		return -ENOTCONN;
 	}
 	length_byte = buf[NCI_PAYLOAD_LEN_IDX];
+#if NFC_NXP_I2C_DMA_SAFE
+	ret = i2c_master_recv_dmasafe(nfc_dev->i2c_dev.client, buf + hdr_len,
+				      length_byte);
+#else
 	ret = i2c_master_recv(nfc_dev->i2c_dev.client, buf + hdr_len,
 			      length_byte);
+#endif
 	if (ret < 0) {
 		pr_info("%s: returned header error %d\n", __func__, ret);
 		pr_err("%s:  returned payload error %d\n", __func__, ret);

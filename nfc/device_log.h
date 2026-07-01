@@ -22,7 +22,7 @@ enum DEBUG_LEVEL_NFC {
 };
 
 #define print_debug(msg...) \
-switch(IS_ENABLED(CONFIG_DYNAMIC_DEBUG)) \
+switch (IS_ENABLED(CONFIG_DYNAMIC_DEBUG)) \
 { \
 	case DEBUG_OFF_NFC: \
 		break; \
@@ -31,12 +31,12 @@ switch(IS_ENABLED(CONFIG_DYNAMIC_DEBUG)) \
 		break; \
 } \
 
-#define device_debug(ptr,msg...) \
-switch(IS_ENABLED(CONFIG_DYNAMIC_DEBUG)) \
+#define device_debug(ptr, msg...) \
+switch (IS_ENABLED(CONFIG_DYNAMIC_DEBUG)) \
 { \
 	case DEBUG_OFF_NFC: \
 		break; \
 	case DEBUG_ON_NFC: \
-		dev_dbg(ptr,msg); \
+		dev_dbg(ptr, msg); \
 		break; \
 }

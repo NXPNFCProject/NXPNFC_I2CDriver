@@ -25,6 +25,7 @@
 /* kept same as dts */
 #define NFC_I2C_DRV_STR			"nxp,sn-nci"
 #define NFC_I2C_DEV_ID			"sn-i2c"
+#define NFC_NXP_I2C_DMA_SAFE		1
 
 /* Interface specific parameters */
 struct i2c_dev {

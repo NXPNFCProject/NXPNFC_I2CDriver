@@ -83,14 +83,14 @@ static int send_cold_reset_protection_cmd(struct nfc_dev *nfc_dev,
 		goto exit;
 	}
 	cmd = nfc_dev->write_kbuf;
-	if (requestType){
+	if (requestType) {
 		pr_debug(" %s: NxpNciX: %d > 0x%02x%02x%02x%02x\n", __func__,
 			 ret, cmd[NCI_HDR_IDX], cmd[NCI_HDR_OID_IDX],
-			 cmd[NCI_PAYLOAD_LEN_IDX], cmd[NCI_PAYLOAD_IDX]);}
-	else{
+			 cmd[NCI_PAYLOAD_LEN_IDX], cmd[NCI_PAYLOAD_IDX]); }
+	else {
 		pr_debug(" %s: NxpNciX: %d > 0x%02x%02x%02x\n", __func__, ret,
 			 cmd[NCI_HDR_IDX], cmd[NCI_HDR_OID_IDX],
-			 cmd[NCI_PAYLOAD_LEN_IDX]);}
+			 cmd[NCI_PAYLOAD_LEN_IDX]); }
 exit:
 	return ret;
 }
